@@ -1,0 +1,6 @@
+﻿namespace LoanApplicationProcessing;
+
+public class Class1
+{
+
+}
