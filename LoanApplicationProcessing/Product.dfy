@@ -204,6 +204,12 @@ module {:extern "Product"} Product
     {
       return customerCreditScore >= PersonalLoan.goodCreditScoreThreshold;
     }
+
+    method getLoanReference() returns (reference: nat)
+    ensures reference == this.referenceNumber
+    {
+      return this.referenceNumber;
+    }
   }
 
   class Reference {
