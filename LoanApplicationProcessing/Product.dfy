@@ -1,5 +1,6 @@
 module {:extern "Product"} Product
 {
+  export provides PersonalLoan 
   class PersonalLoan {
     // class constants
     static const monthLoan24: map<nat, real> := map[5000 := 5694.72, 5100 := 5808.72, 5200 := 5922.72, 5300 := 6036.48, 5400 := 6150.48, 
@@ -45,12 +46,164 @@ module {:extern "Product"} Product
     static const maxAge: nat := (67 * 12)
     static const incomeAffordabilityThreshold: real := 0.8
     static const goodCreditScoreThreshold: nat := 881
-    // class variables     ---- need Reference object!!!!!!!
+    static const highInterestRate: real := 13.6
+    static const lowInterestRate: real := 6.3
+    
+    // class variables     ---- not available in Dafny
+    
     // class methods
+    static method calculateRepayment(anAmount: nat, repaymentPeriod: nat) returns (totalAmountRepayable: real, monthlyRepaymentAmount: real)
+    requires anAmount in PersonalLoan.monthLoan24 || anAmount in PersonalLoan.monthLoan36 || anAmount in PersonalLoan.monthLoan48 || anAmount in PersonalLoan.monthLoan60
+    requires repaymentPeriod == 24 || repaymentPeriod == 36 || repaymentPeriod == 48 || repaymentPeriod == 60
+    ensures totalAmountRepayable == PersonalLoan.monthLoan24[anAmount] || totalAmountRepayable == PersonalLoan.monthLoan36[anAmount] || 
+            totalAmountRepayable == PersonalLoan.monthLoan48[anAmount] || totalAmountRepayable == PersonalLoan.monthLoan60[anAmount]
+    ensures monthlyRepaymentAmount == PersonalLoan.monthLoan24[anAmount] / 24 as real || monthlyRepaymentAmount == PersonalLoan.monthLoan36[anAmount] / 36 as real || 
+            monthlyRepaymentAmount == PersonalLoan.monthLoan48[anAmount] / 48 as real || monthlyRepaymentAmount == PersonalLoan.monthLoan60[anAmount] / 60 as real
+    {
+      var totalAmount: real;
+      if {
+        case repaymentPeriod == 24 => totalAmount := PersonalLoan.monthLoan24[anAmount];
+        case repaymentPeriod == 36 => totalAmount := PersonalLoan.monthLoan36[anAmount];
+        case repaymentPeriod == 48 => totalAmount := PersonalLoan.monthLoan48[anAmount];
+        case repaymentPeriod == 60 => totalAmount := PersonalLoan.monthLoan60[anAmount];
+      }
+      var monthlyAmount: real := (totalAmount / repaymentPeriod as real);
+      return totalAmount, monthlyAmount;
+    }
+    
     // instance constants
+    
+    const referenceGenerator: Reference
+    const requiredAmount: nat
+    const repaymentPeriod: nat
+	  const interestRate: real
+	  const totalAmountRepayable: real
+	  const monthlyRepaymentAmount: real
+    
     // instance variables
+    
+    var referenceNumber: nat
+    var statusPending: bool	
+	  var statusRejected: bool
+    var statusApproved: bool
+    
     // constructor
+    
+    constructor (aRequiredAmount: nat, aRepaymentPeriod: nat, anInterestRate: real)
+    requires aRequiredAmount in PersonalLoan.monthLoan24 || aRequiredAmount in PersonalLoan.monthLoan36 || 
+             aRequiredAmount in PersonalLoan.monthLoan48 || aRequiredAmount in PersonalLoan.monthLoan60
+    requires aRepaymentPeriod == 24 || aRepaymentPeriod == 36 || aRepaymentPeriod == 48 || aRepaymentPeriod == 60
+    requires anInterestRate == PersonalLoan.lowInterestRate || anInterestRate == PersonalLoan.highInterestRate
+    ensures this.requiredAmount == aRequiredAmount
+    ensures this.repaymentPeriod == aRepaymentPeriod
+    ensures this.interestRate == anInterestRate
+    ensures this.totalAmountRepayable == PersonalLoan.monthLoan24[aRequiredAmount] || this.totalAmountRepayable == PersonalLoan.monthLoan36[aRequiredAmount] || 
+            this.totalAmountRepayable == PersonalLoan.monthLoan48[aRequiredAmount] || this.totalAmountRepayable == PersonalLoan.monthLoan60[aRequiredAmount]
+    //ensures this.monthlyRepaymentAmount == this.totalAmountRepayable / aRepaymentPeriod as real
+    ensures this.statusPending == true
+    ensures this.statusRejected == this.statusApproved
+    ensures this.statusPending != (this.statusRejected || this.statusApproved)
+    {
+      this.referenceGenerator := new Reference();
+      this.requiredAmount := aRequiredAmount;
+      this.repaymentPeriod := aRepaymentPeriod;
+      this.interestRate := anInterestRate;
+      var total, monthly: real := PersonalLoan.calculateRepayment(aRequiredAmount, aRepaymentPeriod);
+      this.totalAmountRepayable := total;
+      this.monthlyRepaymentAmount := monthly;
+      this.statusPending := true;
+      this.statusRejected := false;
+      this.statusApproved := false;
+      new;
+      this.referenceNumber := this.referenceGenerator.getReferenceNumber();
+    }
     // instance methods
+    method setStatus(status: string) returns ()
+    requires status == "pending" || status == "rejected" || status == "approved"
+    modifies this`statusPending
+    modifies this`statusRejected
+    modifies this`statusApproved
+    {
+      if {
+      case status == "pending" => setStatusPending();
+      case status == "rejected" => setStatusRejected();
+      case status == "approved" => setStatusApproved();
+      }
+    }
+
+    method setStatusPending() returns ()
+    modifies this`statusRejected
+    modifies this`statusApproved
+    modifies this`statusPending
+    ensures this.statusPending == true
+    ensures this.statusRejected == this.statusApproved
+    ensures this.statusPending != (this.statusRejected || this.statusApproved)
+    {
+      this.statusRejected := false;
+      this.statusApproved := false;
+      this.statusPending := true;
+    }
+
+    method setStatusRejected() returns ()
+    modifies this`statusPending
+    modifies this`statusApproved
+    modifies this`statusRejected
+    ensures this.statusRejected == true
+    ensures this.statusPending == this.statusApproved
+    ensures this.statusRejected != (this.statusPending || this.statusApproved)
+    {
+      this.statusPending := false;
+      this.statusApproved := false;
+      this.statusRejected := true;
+    }
+
+    method setStatusApproved() returns ()
+    modifies this`statusPending
+    modifies this`statusRejected
+    modifies this`statusApproved
+    ensures this.statusApproved == true
+    ensures this.statusPending == this.statusRejected
+    ensures this.statusApproved != (this.statusPending || this.statusRejected)
+    {
+      this.statusPending := false;
+      this.statusRejected := false;
+      this.statusApproved := true;
+    }
+
+    method getStatus() returns (status: string)
+    requires !(this.statusPending == this.statusRejected == this.statusApproved)
+    ensures status == "pending" || status == "rejected" || status == "approved"
+    {
+      if {
+        case this.statusPending == true => return "pending";
+        case this.statusRejected == true => return "rejected";
+        case this.statusApproved == true => return "approved";
+      }
+    }
+
+    method verifyAgeCriteria(customerAge: nat) returns (isVerified: bool)
+    ensures isVerified == (((customerAge * 12) + this.repaymentPeriod) <= PersonalLoan.maxAge)
+    ensures !isVerified == (((customerAge * 12) + this.repaymentPeriod) > PersonalLoan.maxAge)
+    {
+      var ageWhenLoanComplete: nat := (customerAge * 12) + this.repaymentPeriod;
+      return ageWhenLoanComplete <= PersonalLoan.maxAge;
+    }
+
+    method verifyIncomeCriteria(customerMonthlyIncome: real, customerMonthlyOutgoings: real) returns (isVerified: bool)
+    ensures isVerified == ((customerMonthlyIncome * 0.8) >= (customerMonthlyOutgoings + this.monthlyRepaymentAmount))
+    ensures !isVerified == ((customerMonthlyIncome * 0.8) < (customerMonthlyOutgoings + this.monthlyRepaymentAmount))
+    {
+      var totalOutgoings: real := customerMonthlyOutgoings + this.monthlyRepaymentAmount;
+      var adjustedIncommings: real := customerMonthlyIncome * PersonalLoan.incomeAffordabilityThreshold;
+      return adjustedIncommings >= totalOutgoings; 
+    }
+
+    method verifyCreditScore(customerCreditScore: nat) returns (isVerified: bool)
+    ensures isVerified == (customerCreditScore >= PersonalLoan.goodCreditScoreThreshold)
+    ensures !isVerified == (customerCreditScore < PersonalLoan.goodCreditScoreThreshold)
+    {
+      return customerCreditScore >= PersonalLoan.goodCreditScoreThreshold;
+    }
   }
 
   class Reference {
