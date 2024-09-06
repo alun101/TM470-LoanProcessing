@@ -1,5 +1,6 @@
 module {:extern "BankSystem"} BankSystem
 {
+  import 'Support.dfy.Support'
   class Bank {
     // class constants
     // class variables

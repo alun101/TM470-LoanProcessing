@@ -2,7 +2,9 @@ module {:extern "Product"} Product
 {
   export provides PersonalLoan 
   class PersonalLoan {
+    
     // class constants
+    
     static const monthLoan24: map<nat, real> := map[5000 := 5694.72, 5100 := 5808.72, 5200 := 5922.72, 5300 := 6036.48, 5400 := 6150.48, 
                                                     5500 := 6264.24, 5600 := 6378.24, 5700 := 6492.00, 5800 := 6606.00, 5900 := 6720.00,
                                                     6000 := 6833.76, 6100 := 6947.76, 6200 := 7061.52, 6300 := 7175.52, 6400 := 7289.28,
@@ -49,7 +51,7 @@ module {:extern "Product"} Product
     static const highInterestRate: real := 13.6
     static const lowInterestRate: real := 6.3
     
-    // class variables     ---- not available in Dafny
+    // class variables -- not available in Dafny
     
     // class methods
     static method calculateRepayment(anAmount: nat, repaymentPeriod: nat) returns (totalAmountRepayable: real, monthlyRepaymentAmount: real)
@@ -117,7 +119,9 @@ module {:extern "Product"} Product
       new;
       this.referenceNumber := this.referenceGenerator.getReferenceNumber();
     }
+    
     // instance methods
+    
     method setStatus(status: string) returns ()
     requires status == "pending" || status == "rejected" || status == "approved"
     modifies this`statusPending

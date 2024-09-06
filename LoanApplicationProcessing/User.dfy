@@ -2,11 +2,12 @@ module {:extern "User"} User
 {
   export provides Customer
   class Customer {
-    // class constants
-
-    // class variables  --------- not available in Dafny
     
-    // class methods
+    // class constants -- N/A
+
+    // class variables -- not available in Dafny
+    
+    // class methods -- N/A
     
     // instance constants
 
@@ -19,9 +20,11 @@ module {:extern "User"} User
     const referenceGenerator: Reference
     
     // instance variables
+
     var customerReference: nat
 
     // constructor
+    
     constructor(aName: string, anAge: nat, anAccountNumber: string, aSortCode: string, aMonthlyIncome: real, aMonthlyOutgoing: real)
     ensures this.name == aName
     ensures this.age == anAge
@@ -42,6 +45,7 @@ module {:extern "User"} User
     }
     
     // instance methods
+    
     method getName() returns (customerName: string)
     ensures customerName == this.name
     {
