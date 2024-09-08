@@ -1,6 +1,6 @@
 module {:extern "Product"} Product
 {
-  export provides PersonalLoan 
+  export reveals * 
   class PersonalLoan {
     
     // class constants
@@ -140,8 +140,8 @@ module {:extern "Product"} Product
     modifies this`statusApproved
     modifies this`statusPending
     ensures this.statusPending == true
-    ensures this.statusRejected == this.statusApproved
-    ensures this.statusPending != (this.statusRejected || this.statusApproved)
+    ensures this.statusRejected == false
+    ensures this.statusApproved == false
     {
       this.statusRejected := false;
       this.statusApproved := false;
@@ -153,8 +153,8 @@ module {:extern "Product"} Product
     modifies this`statusApproved
     modifies this`statusRejected
     ensures this.statusRejected == true
-    ensures this.statusPending == this.statusApproved
-    ensures this.statusRejected != (this.statusPending || this.statusApproved)
+    ensures this.statusPending == false
+    ensures this.statusApproved == false
     {
       this.statusPending := false;
       this.statusApproved := false;
@@ -166,8 +166,8 @@ module {:extern "Product"} Product
     modifies this`statusRejected
     modifies this`statusApproved
     ensures this.statusApproved == true
-    ensures this.statusPending == this.statusRejected
-    ensures this.statusApproved != (this.statusPending || this.statusRejected)
+    ensures this.statusPending == false
+    ensures this.statusRejected == false
     {
       this.statusPending := false;
       this.statusRejected := false;
@@ -213,6 +213,12 @@ module {:extern "Product"} Product
     ensures reference == this.referenceNumber
     {
       return this.referenceNumber;
+    }
+
+    method getRequiredAmount () returns (amount: nat)
+    ensures amount == this.requiredAmount
+    {
+      return this.requiredAmount;
     }
   }
 

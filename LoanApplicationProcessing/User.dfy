@@ -1,6 +1,6 @@
 module {:extern "User"} User
 {
-  export provides Customer
+  export reveals *
   class Customer {
     
     // class constants -- N/A
