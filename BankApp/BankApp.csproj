@@ -4,6 +4,10 @@
     <ProjectReference Include="..\LoanApplicationProcessing\LoanApplicationProcessing.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="DafnyRuntime" Version="4.8.0" />
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
