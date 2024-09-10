@@ -1,0 +1,6 @@
+file_format_version = "1.0"
+dafny_version = "4.7.0.0"
+[options_by_module.Support]
+[options_by_module.Product]
+[options_by_module.User]
+[options_by_module.BankSystem]

@@ -1,6 +1,7 @@
 module {:extern "Product"} Product
 {
   export reveals * 
+  
   class PersonalLoan {
     
     // class constants
@@ -75,7 +76,7 @@ module {:extern "Product"} Product
     
     // instance constants
     
-    const referenceGenerator: Reference
+    const referenceGenerator: Reference?
     const requiredAmount: nat
     const repaymentPeriod: nat
 	  const interestRate: real
@@ -117,7 +118,11 @@ module {:extern "Product"} Product
       this.statusRejected := false;
       this.statusApproved := false;
       new;
-      this.referenceNumber := this.referenceGenerator.getReferenceNumber();
+      if (this.referenceGenerator == null) {
+        this.referenceNumber := 999_999_999;
+      } else {
+        this.referenceNumber := this.referenceGenerator.getReferenceNumber();
+      }
     }
     
     // instance methods
@@ -142,6 +147,7 @@ module {:extern "Product"} Product
     ensures this.statusPending == true
     ensures this.statusRejected == false
     ensures this.statusApproved == false
+    ensures !(this.statusPending == this.statusRejected == this.statusApproved)
     {
       this.statusRejected := false;
       this.statusApproved := false;
@@ -155,6 +161,7 @@ module {:extern "Product"} Product
     ensures this.statusRejected == true
     ensures this.statusPending == false
     ensures this.statusApproved == false
+    ensures !(this.statusPending == this.statusRejected == this.statusApproved)
     {
       this.statusPending := false;
       this.statusApproved := false;
@@ -168,6 +175,7 @@ module {:extern "Product"} Product
     ensures this.statusApproved == true
     ensures this.statusPending == false
     ensures this.statusRejected == false
+    ensures !(this.statusPending == this.statusRejected == this.statusApproved)
     {
       this.statusPending := false;
       this.statusRejected := false;

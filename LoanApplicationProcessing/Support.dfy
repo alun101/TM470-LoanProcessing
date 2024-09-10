@@ -1,6 +1,7 @@
 module {:extern "Support"} Support
 {
   export reveals *
+  
   class CreditReferenceAgency {
     
     // class constants

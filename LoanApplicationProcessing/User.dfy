@@ -1,6 +1,7 @@
 module {:extern "User"} User
 {
   export reveals *
+  
   class Customer {
     
     // class constants -- N/A
@@ -17,7 +18,7 @@ module {:extern "User"} User
     const	sortCode: string
     const	monthlyIncome: real
     const	monthlyOutgoings: real
-    const referenceGenerator: Reference
+    const referenceGenerator: Reference?
     
     // instance variables
 
@@ -41,7 +42,11 @@ module {:extern "User"} User
 	    this.monthlyOutgoings := aMonthlyOutgoing;
       this.referenceGenerator := new Reference();
       new;
-      this.customerReference := this.referenceGenerator.getReferenceNumber();
+      if (this.referenceGenerator == null) {
+        this.customerReference := 999_999_999;
+      } else {
+        this.customerReference := this.referenceGenerator.getReferenceNumber();
+      }
     }
     
     // instance methods
