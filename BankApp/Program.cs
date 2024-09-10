@@ -1,6 +1,7 @@
 ﻿
 using Support;
 using BankSystem;
+using Dafny;
 using System.Runtime.Serialization;
 using System.ComponentModel.DataAnnotations;
 
@@ -8,7 +9,18 @@ class Program
 {
   static void Main(string[] args)
   {
-
+    Console.WriteLine($"{Environment.NewLine}Enter bank capital fund value of 500000 or blank to exit:");
+    string? input = Console.ReadLine();
+    if (string.IsNullOrEmpty(input)) {return;}
+    int value = int.Parse(input);
+    if (value < 500000) {return;}
+    (Bank b, CreditReferenceAgency c) = UserInterface.SetupBankingSystem(value);
+    if (b != null && c != null){
+      UserInterface.BeginLoanApplicationSubmissionInterface(b, c);
+    } else {
+      Console.WriteLine($"{Environment.NewLine}Setup Error: Program terminating");
+    }
+    return;
   }
 }
 
@@ -27,7 +39,7 @@ class UserInterface
   {
     while(true)
     {
-      var exit = false;
+      bool exit = false;
       string name = "";
       int age = 0;
       string accNo = "";
@@ -40,7 +52,7 @@ class UserInterface
 
       Console.WriteLine($"{Environment.NewLine}Enter 'y' and press <Enter> to begin a loan application or any other key to exit:");
       string? input = Console.ReadLine();
-      if (string.IsNullOrEmpty(input) || !(input.Equals('y') || input.Equals('Y'))) {exit = true;} 
+      if (string.IsNullOrEmpty(input) || !(input.Equals("y") || input.Equals("Y"))) {exit = true;} 
       if (exit) {break;}
       // get customer personal details
       Console.WriteLine($"{Environment.NewLine}Please enter customer personal details");
@@ -54,13 +66,13 @@ class UserInterface
       }
       if (exit) {break;}
       // get customer age
-      Console.WriteLine($"{Environment.NewLine}Enter an age between 18 and 63 (inclusive) or blank to exit:");
+      Console.WriteLine($"{Environment.NewLine}Enter an age between 18 and 65 (inclusive) or blank to exit:");
       input = Console.ReadLine();
       if (string.IsNullOrEmpty(input)) {
         exit = true;
       } else {
         age = int.Parse(input);
-        if (age < 18 || age > 63) {
+        if (age < 18 || age > 65) {
           exit = true;
         }
       }
@@ -134,14 +146,26 @@ class UserInterface
         exit = true;
       } else {
         repaymentPeriod = int.Parse(input);
-        if (repaymentPeriod != 24 || repaymentPeriod != 36 || repaymentPeriod != 48 || repaymentPeriod != 60) {
+        if (!(repaymentPeriod == 24 || repaymentPeriod == 36 || repaymentPeriod == 48 || repaymentPeriod == 60)) {
           exit = true;
         }
       }
       if (exit) {break;}
+      
+      // convert c# types to equivalent Dafny types
+      // required for string -> ISequence<Rune>
+      // required for float -> BigRational
+      // not required for int 
+      var dafnyName = Dafny.Sequence<Dafny.Rune>.UnicodeFromString(name);
+      var dafnyCreditScore = Dafny.Sequence<Dafny.Rune>.UnicodeFromString(creditScore);
+      var dafnyAccNo = Dafny.Sequence<Dafny.Rune>.UnicodeFromString(accNo);
+      var dafnySortCode = Dafny.Sequence<Dafny.Rune>.UnicodeFromString(sortCode);
+      var dafnyMonthlyIncome = new Dafny.BigRational(monthlyIncome);
+      var dafnyMonthlyOutgoings = new Dafny.BigRational(monthlyOutgoings);
+      
       // add customer to the Credit Reference Agency
-      creditReferenceAgency.addPerson(name, creditScore);
-      bank.newApplication(name, age, accNo, sortCode, monthlyIncome, monthlyOutgoings, requiredAmount, repaymentPeriod);
+      creditReferenceAgency.addPerson(dafnyName, dafnyCreditScore);
+      bank.newApplication(dafnyName, age, dafnyAccNo, dafnySortCode, dafnyMonthlyIncome, dafnyMonthlyOutgoings, requiredAmount, repaymentPeriod);
     }
   }
 }
