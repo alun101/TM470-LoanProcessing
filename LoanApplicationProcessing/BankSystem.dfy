@@ -29,7 +29,9 @@ module {:extern "BankSystem"} BankSystem
     var reservedFunds: nat 
     var loans: set<PersonalLoan>         
     var customers: set<Customer>         
-    var customerLoans: map<nat, nat> 
+    var customerLoans: map<nat, nat>
+    var nextCustomerReference: nat
+    var nextLoanReference: nat
     
     // constructor
 
@@ -39,6 +41,8 @@ module {:extern "BankSystem"} BankSystem
     {
       this.capitalFundValue := aValue;
       this.referenceAgency := aReferenceAgency;
+      this.nextCustomerReference := 1_000_000;
+      this.nextLoanReference := 1_000_000;
     }
     
     // instance methods
@@ -53,6 +57,8 @@ module {:extern "BankSystem"} BankSystem
     modifies this`customerLoans
     modifies this`capitalFundValue
     modifies this`reservedFunds
+    modifies this`nextLoanReference
+    modifies this`nextCustomerReference
     {
       logEvent("BEGINNING LOAN APPLICATION PROCESS");
       var interest: real := 0.0;
@@ -60,7 +66,8 @@ module {:extern "BankSystem"} BankSystem
         case (5_000 <= requiredAmount <= 7_499) => interest := 13.6;
         case (7_500 <= requiredAmount <= 10_000) => interest := 6.3;
       }
-      var loan: PersonalLoan? := new PersonalLoan(requiredAmount, repaymentPeriod, interest);
+      var ref: nat := getNextLoanReference();
+      var loan: PersonalLoan? := new PersonalLoan(requiredAmount, repaymentPeriod, interest, ref);
       if (loan == null) {
         logEvent("ERROR: UNABLE TO CREATE LOAN");
         }
@@ -97,6 +104,7 @@ module {:extern "BankSystem"} BankSystem
     modifies aLoan`statusApproved
     modifies this`capitalFundValue
     modifies this`reservedFunds
+    modifies this`nextCustomerReference
     {
       logEvent("BEGINNING APPLICATION REGISTRATION");
       var loanRegistered :bool := false;
@@ -119,9 +127,11 @@ module {:extern "BankSystem"} BankSystem
 
     method registerCustomer(name: string, age: nat, accountNumber: string, sortCode: string, monthlyIncome: real, monthlyOutgoings: real) returns (newCustomer: Customer?)
     modifies this`customers
+    modifies this`nextCustomerReference
     {
       logEvent("BEGINNING CUSTOMER REGISTRATION");
-      var aCustomer: Customer? := new Customer(name, age, accountNumber, sortCode, monthlyIncome, monthlyOutgoings);
+      var ref: nat := getNextCustomerReference();
+      var aCustomer: Customer? := new Customer(name, age, accountNumber, sortCode, monthlyIncome, monthlyOutgoings, ref); 
       if (aCustomer == null) {return aCustomer;}
       this.addCustomer(aCustomer);
       aCustomer.printCustomerDetails();
@@ -253,6 +263,7 @@ module {:extern "BankSystem"} BankSystem
     modifies this`reservedFunds
     ensures (this.capitalFundValue + this.reservedFunds) == (old(capitalFundValue) + old(reservedFunds)) 
     {
+      this.printFundValues();
       var loanAmount: nat := theLoan.getRequiredAmount();
       var startingCapitalfund: nat := this.capitalFundValue;
       var startingReserveFund: nat := this.reservedFunds;
@@ -274,6 +285,7 @@ module {:extern "BankSystem"} BankSystem
     modifies this`reservedFunds
     {
       logEvent("BEGINNING APPLICATION COMPLETION PROCESS");
+      theLoan.printLoanDetails();
       var loanStatus: string := theLoan.getStatus();
       if (loanStatus == "rejected") {
         var message1: string := "We are sorry that your application cannot be processed at this time.";
@@ -342,6 +354,26 @@ module {:extern "BankSystem"} BankSystem
       var rfv: string := "RESERVED FUND VALUE :: £";
       print cfv, this.capitalFundValue, "\n", 
             rfv, this.reservedFunds, "\n";
+    }
+
+    method getNextLoanReference() returns (ref: nat)
+    modifies this`nextLoanReference
+    ensures ref == old(this.nextLoanReference)
+    ensures this.nextLoanReference == old(this.nextLoanReference) + 1 
+    {
+      var oldRef: nat := this.nextLoanReference;
+      this.nextLoanReference := this.nextLoanReference + 1;
+      return oldRef;
+    }
+
+    method getNextCustomerReference() returns (ref: nat)
+    modifies this`nextCustomerReference
+    ensures ref == old(this.nextCustomerReference)
+    ensures this.nextCustomerReference == old(this.nextCustomerReference) + 1 
+    {
+      var oldRef: nat := this.nextCustomerReference;
+      this.nextCustomerReference := this.nextCustomerReference + 1;
+      return oldRef;
     }
   }
 }

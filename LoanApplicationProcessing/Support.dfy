@@ -26,18 +26,13 @@ module {:extern "Support"} Support
     
     // instance methods
 
-    method addPerson(name: string, creditScoreSetup: string) returns ()
-    requires creditScoreSetup == "pass" || creditScoreSetup == "fail"
+    method addPerson(name: string, creditScoreSetup: nat) returns ()
+    requires CreditReferenceAgency.creditScoreMin <= creditScoreSetup <= CreditReferenceAgency.creditScoreMax
     modifies this`creditScores
     ensures name in creditScores
     ensures CreditReferenceAgency.creditScoreMin <= creditScores[name] <= CreditReferenceAgency.creditScoreMax 
     {
-      var aCreditScore: nat := 0;
-      if {
-        case creditScoreSetup == "pass" => aCreditScore :| CreditReferenceAgency.creditScoreGood <= aCreditScore <= CreditReferenceAgency.creditScoreMax;
-        case creditScoreSetup == "fail" => aCreditScore :| CreditReferenceAgency.creditScoreMin <= aCreditScore < CreditReferenceAgency.creditScoreGood;
-      }
-      this.creditScores := map[name := aCreditScore];
+      this.creditScores := map[name := creditScoreSetup];
     }
 
     method getCreditScore(name: string) returns (creditScore: nat)

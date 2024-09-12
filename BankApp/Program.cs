@@ -46,7 +46,7 @@ class UserInterface
       string sortCode = "";
       float monthlyIncome = 0.0F;
       float monthlyOutgoings = 0.0F;
-      string creditScore = "";
+      int creditScore = 0;
       int requiredAmount = 0;
       int repaymentPeriod = 0;
 
@@ -114,13 +114,13 @@ class UserInterface
       }
       if (exit) {break;}
       // get customer credit score setup
-      Console.WriteLine($"{Environment.NewLine}Enter customer credit score setup 'pass' or 'fail' or blank to exit:");
+      Console.WriteLine($"{Environment.NewLine}Enter customer credit score setup, 0-880 for 'fail' or 881-999 for 'pass' or blank to exit:");
       input = Console.ReadLine();
       if (string.IsNullOrEmpty(input)) {
         exit = true;
       } else {
-        creditScore = input;
-        if (!(creditScore.Equals("pass") || creditScore.Equals("fail"))) {
+        creditScore = int.Parse(input);
+        if (creditScore < 0 || creditScore > 999) {
           exit = true;
         }
       }
@@ -157,14 +157,13 @@ class UserInterface
       // required for float -> BigRational
       // not required for int 
       var dafnyName = Dafny.Sequence<Dafny.Rune>.UnicodeFromString(name);
-      var dafnyCreditScore = Dafny.Sequence<Dafny.Rune>.UnicodeFromString(creditScore);
       var dafnyAccNo = Dafny.Sequence<Dafny.Rune>.UnicodeFromString(accNo);
       var dafnySortCode = Dafny.Sequence<Dafny.Rune>.UnicodeFromString(sortCode);
       var dafnyMonthlyIncome = new Dafny.BigRational(monthlyIncome);
       var dafnyMonthlyOutgoings = new Dafny.BigRational(monthlyOutgoings);
       
       // add customer to the Credit Reference Agency
-      creditReferenceAgency.addPerson(dafnyName, dafnyCreditScore);
+      creditReferenceAgency.addPerson(dafnyName, creditScore);
       bank.newApplication(dafnyName, age, dafnyAccNo, dafnySortCode, dafnyMonthlyIncome, dafnyMonthlyOutgoings, requiredAmount, repaymentPeriod);
     }
   }

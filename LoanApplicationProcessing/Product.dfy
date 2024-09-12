@@ -76,7 +76,7 @@ module {:extern "Product"} Product
     
     // instance constants
     
-    const referenceGenerator: Reference?
+    const referenceNumber: nat
     const requiredAmount: nat
     const repaymentPeriod: nat
 	  const interestRate: real
@@ -85,14 +85,13 @@ module {:extern "Product"} Product
     
     // instance variables
     
-    var referenceNumber: nat
     var statusPending: bool	
 	  var statusRejected: bool
     var statusApproved: bool
     
     // constructor
     
-    constructor (aRequiredAmount: nat, aRepaymentPeriod: nat, anInterestRate: real)
+    constructor (aRequiredAmount: nat, aRepaymentPeriod: nat, anInterestRate: real, aReferenceNumber: nat)
     requires aRequiredAmount in PersonalLoan.monthLoan24 || aRequiredAmount in PersonalLoan.monthLoan36 || 
              aRequiredAmount in PersonalLoan.monthLoan48 || aRequiredAmount in PersonalLoan.monthLoan60
     requires aRepaymentPeriod == 24 || aRepaymentPeriod == 36 || aRepaymentPeriod == 48 || aRepaymentPeriod == 60
@@ -107,7 +106,7 @@ module {:extern "Product"} Product
     ensures this.statusRejected == this.statusApproved
     ensures this.statusPending != (this.statusRejected || this.statusApproved)
     {
-      this.referenceGenerator := new Reference();
+      this.referenceNumber := aReferenceNumber;
       this.requiredAmount := aRequiredAmount;
       this.repaymentPeriod := aRepaymentPeriod;
       this.interestRate := anInterestRate;
@@ -117,12 +116,6 @@ module {:extern "Product"} Product
       this.statusPending := true;
       this.statusRejected := false;
       this.statusApproved := false;
-      new;
-      if (this.referenceGenerator == null) {
-        this.referenceNumber := 999_999_999;
-      } else {
-        this.referenceNumber := this.referenceGenerator.getReferenceNumber();
-      }
     }
     
     // instance methods
@@ -247,23 +240,6 @@ module {:extern "Product"} Product
             total, this.totalAmountRepayable, "\n",
             monthly, this.monthlyRepaymentAmount, "\n",
             status, currentStatus, "\n";
-    }
-  }
-
-  class Reference {
-    var reference: nat
-    constructor ()
-    {
-      reference := 1_000_000;
-    }
-    method getReferenceNumber() returns (ref: nat)
-    modifies this`reference
-    ensures ref == old(this.reference)
-    ensures this.reference == old(this.reference) + 1
-    {
-      var ref_old: nat := this.reference;
-      this.reference := this.reference + 1;
-      return ref_old;
     }
   }
 }

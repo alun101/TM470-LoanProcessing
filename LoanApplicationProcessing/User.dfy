@@ -18,21 +18,20 @@ module {:extern "User"} User
     const	sortCode: string
     const	monthlyIncome: real
     const	monthlyOutgoings: real
-    const referenceGenerator: Reference?
+    const customerReference: nat
     
-    // instance variables
-
-    var customerReference: nat
+    // instance variables -- N/A
 
     // constructor
     
-    constructor(aName: string, anAge: nat, anAccountNumber: string, aSortCode: string, aMonthlyIncome: real, aMonthlyOutgoing: real)
+    constructor(aName: string, anAge: nat, anAccountNumber: string, aSortCode: string, aMonthlyIncome: real, aMonthlyOutgoing: real, aReference: nat)
     ensures this.name == aName
     ensures this.age == anAge
     ensures this.accountNumber == anAccountNumber
     ensures this.sortCode == aSortCode
     ensures this.monthlyIncome == aMonthlyIncome
     ensures this.monthlyOutgoings == aMonthlyOutgoing
+    ensures this.customerReference == aReference
     {
 	    this.name := aName;
 	    this.age := anAge;
@@ -40,13 +39,7 @@ module {:extern "User"} User
 	    this.sortCode := aSortCode;
 	    this.monthlyIncome := aMonthlyIncome;
 	    this.monthlyOutgoings := aMonthlyOutgoing;
-      this.referenceGenerator := new Reference();
-      new;
-      if (this.referenceGenerator == null) {
-        this.customerReference := 999_999_999;
-      } else {
-        this.customerReference := this.referenceGenerator.getReferenceNumber();
-      }
+      this.customerReference := aReference;
     }
     
     // instance methods
@@ -104,23 +97,6 @@ module {:extern "User"} User
             sort, this.sortCode, "\n",
             income, this.monthlyIncome, "\n",
             outgoings, this.monthlyOutgoings, "\n"; 
-    }
-  }
-
-  class Reference {
-    var reference: nat
-    constructor ()
-    {
-      reference := 1_000_000;
-    }
-    method getReferenceNumber() returns (ref: nat)
-    modifies this`reference
-    ensures ref == old(this.reference)
-    ensures this.reference == old(this.reference) + 1
-    {
-      var ref_old: nat := this.reference;
-      this.reference := this.reference + 1;
-      return ref_old;
     }
   }
 }

@@ -14,733 +14,16 @@
 // </auto-generated>
 //--------------------------------------------------------------------------------------------------------------------
 
+//--------------------------------------------------------------------------------------------------------------------
+//
+// Verified Loan Application Processing - TM470
+// Alun Evans
+//
+//--------------------------------------------------------------------------------------------------------------------
+
 using System;
 using System.Numerics;
 using System.Collections;
-
-/************************* START OF REMOVED SECTION ******************************************************************
-[assembly: DafnyAssembly.DafnySourceAttribute(@"// dafny 4.7.0.0
-// Command-line arguments: translate cs c:\Users\alunm\Documents\Alun\Programming\TM470-LoanProcessing\LoanApplicationProcessing\BankSystem.dfy
-// BankSystem.dfy
-
-
-module {:extern ""BankSystem""} BankSystem {
-
-  import opened Support
-
-  import opened Product
-
-  import opened User
-
-  export
-    reveals *
-    provides Support, Product, User
-    reveals Bank, Bank.capitalFundMinimumThreshold, Bank.referenceAgency
-    provides Bank.capitalFundValue, Bank.reservedFunds, Bank.loans, Bank.customers, Bank.customerLoans, Bank._ctor, Bank.newApplication, Bank.registerApplication, Bank.registerCustomer, Bank.registerLoan, Bank.associateCustomerLoan, Bank.processApplication, Bank.addLoan, Bank.addCustomer, Bank.informCustomer, Bank.obtainCustomerCreditScore, Bank.verifyCapitalAmount, Bank.reserveLoanFunds, Bank.completeApplication, Bank.releaseLoanFunds, Bank.transferLoanToCustomer, Bank.logEvent, Bank.printFundValues
-
-  class Bank {
-    const capitalFundMinimumThreshold: nat := 500000
-    const referenceAgency: CreditReferenceAgency
-    var capitalFundValue: nat
-    var reservedFunds: nat
-    var loans: set<PersonalLoan>
-    var customers: set<Customer>
-    var customerLoans: map<nat, nat>
-
-    constructor (aValue: nat, aReferenceAgency: CreditReferenceAgency)
-      ensures this.capitalFundValue == aValue
-      ensures this.referenceAgency == aReferenceAgency
-      decreases aValue, aReferenceAgency
-    {
-      this.capitalFundValue := aValue;
-      this.referenceAgency := aReferenceAgency;
-    }
-
-    method newApplication(name: string, age: nat, accountNumber: string, sortCode: string, monthlyIncome: real, monthlyOutgoings: real, requiredAmount: nat, repaymentPeriod: nat)
-      requires requiredAmount in PersonalLoan.monthLoan24 || requiredAmount in PersonalLoan.monthLoan36 || requiredAmount in PersonalLoan.monthLoan48 || requiredAmount in PersonalLoan.monthLoan60
-      requires repaymentPeriod == 24 || repaymentPeriod == 36 || repaymentPeriod == 48 || repaymentPeriod == 60
-      modifies this`customers, this`loans, this`customerLoans, this`capitalFundValue, this`reservedFunds
-      decreases name, age, accountNumber, sortCode, monthlyIncome, monthlyOutgoings, requiredAmount, repaymentPeriod
-    {
-      logEvent(""BEGINNING LOAN APPLICATION PROCESS"");
-      var interest: real := 0.0;
-      if {
-        case 5000 <= requiredAmount <= 7499 =>
-          interest := 13.6;
-        case 7500 <= requiredAmount <= 10000 =>
-          interest := 6.3;
-      }
-      var loan: PersonalLoan? := new PersonalLoan(requiredAmount, repaymentPeriod, interest);
-      if loan == null {
-        logEvent(""ERROR: UNABLE TO CREATE LOAN"");
-      }
-      var customer: Customer?, applicationStatus: bool := this.registerApplication(name, age, accountNumber, sortCode, monthlyIncome, monthlyOutgoings, loan);
-      if !applicationStatus {
-        logEvent(""LOAN APPLICATION PROCESS COMPLETE"");
-        return;
-      }
-      if customer == null {
-        logEvent(""ERROR: UNABLE TO CREATE CUSTOMER"");
-        return;
-      }
-      if applicationStatus {
-        applicationStatus := this.processApplication(customer, loan);
-      }
-      if {
-        case applicationStatus == false =>
-          loan.setStatus(""rejected"");
-        case applicationStatus == true =>
-          loan.setStatus(""approved"");
-      }
-      assume {:axiom} !(loan.statusPending == loan.statusRejected == loan.statusApproved);
-      this.completeApplication(customer, loan);
-      logEvent(""LOAN APPLICATION PROCESS COMPLETE"");
-    }
-
-    method registerApplication(name: string, age: nat, accountNumber: string, sortCode: string, monthlyIncome: real, monthlyOutgoings: real, aLoan: PersonalLoan)
-        returns (aCustomer: Customer?, isLoanRegistered: bool)
-      modifies this`customers, this`loans, this`customerLoans, aLoan`statusPending, aLoan`statusRejected, aLoan`statusApproved, this`capitalFundValue, this`reservedFunds
-      decreases name, age, accountNumber, sortCode, monthlyIncome, monthlyOutgoings, aLoan
-    {
-      logEvent(""BEGINNING APPLICATION REGISTRATION"");
-      var loanRegistered: bool := false;
-      var customer: Customer? := this.registerCustomer(name, age, accountNumber, sortCode, monthlyIncome, monthlyOutgoings);
-      if customer == null {
-        return customer, loanRegistered;
-      }
-      loanRegistered := this.registerLoan(aLoan);
-      var customerRef: nat := customer.getCustomerReference();
-      var loanRef: nat := aLoan.getLoanReference();
-      this.associateCustomerLoan(loanRef, customerRef);
-      var message: string;
-      if loanRegistered {
-        message := ""Your application has been recieved and will be processed"";
-      } else {
-        message := ""We are sorry that your application cannot be processed at this time."";
-      }
-      this.informCustomer(customer, message);
-      logEvent(""APPLICATION REGISTRATION COMPLETE"");
-      return customer, loanRegistered;
-    }
-
-    method registerCustomer(name: string, age: nat, accountNumber: string, sortCode: string, monthlyIncome: real, monthlyOutgoings: real)
-        returns (newCustomer: Customer?)
-      modifies this`customers
-      decreases name, age, accountNumber, sortCode, monthlyIncome, monthlyOutgoings
-    {
-      logEvent(""BEGINNING CUSTOMER REGISTRATION"");
-      var aCustomer: Customer? := new Customer(name, age, accountNumber, sortCode, monthlyIncome, monthlyOutgoings);
-      if aCustomer == null {
-        return aCustomer;
-      }
-      this.addCustomer(aCustomer);
-      aCustomer.printCustomerDetails();
-      logEvent(""CUSTOMER REGISTRATION COMPLETE"");
-      return aCustomer;
-    }
-
-    method registerLoan(aLoan: PersonalLoan) returns (success: bool)
-      modifies this`capitalFundValue, this`reservedFunds, this`loans, aLoan`statusPending, aLoan`statusRejected, aLoan`statusApproved
-      decreases aLoan
-    {
-      logEvent(""BEGINNING LOAN REGISTRATION"");
-      var verified: bool := false;
-      var loanAmount: nat := aLoan.getRequiredAmount();
-      verified := this.verifyCapitalAmount(this.capitalFundValue, this.capitalFundMinimumThreshold, loanAmount);
-      if verified {
-        logEvent(""CAPITAL FUND VERIFICATION PASSED"");
-        verified := this.reserveLoanFunds(aLoan);
-      } else {
-        logEvent(""CAPITAL FUND VERIFICATION FAILED"");
-      }
-      if verified {
-        this.addLoan(aLoan);
-      }
-      if !verified {
-        aLoan.setStatus(""rejected"");
-      }
-      assume {:axiom} !(aLoan.statusPending == aLoan.statusRejected == aLoan.statusApproved);
-      aLoan.printLoanDetails();
-      logEvent(""LOAN REGISTRATION COMPLETE"");
-      return verified;
-    }
-
-    method associateCustomerLoan(loanReferenceNumber: nat, customerReferenceNumber: nat)
-      modifies this`customerLoans
-      ensures loanReferenceNumber in customerLoans
-      ensures customerLoans[loanReferenceNumber] == customerReferenceNumber
-      decreases loanReferenceNumber, customerReferenceNumber
-    {
-      this.customerLoans := map[loanReferenceNumber := customerReferenceNumber];
-    }
-
-    method processApplication(aCustomer: Customer, aLoan: PersonalLoan) returns (isSuccessful: bool)
-      decreases aCustomer, aLoan
-    {
-      logEvent(""BEGINNING PROCESSING APPLICATION"");
-      var verified: bool := false;
-      var customerAge: nat := aCustomer.getAge();
-      verified := aLoan.verifyAgeCriteria(customerAge);
-      if !verified {
-        logEvent(""AGE CRITERIA VERIFICATION FAILED"");
-        var message: string := ""Your application has failed the loan age criteria process"";
-        this.informCustomer(aCustomer, message);
-        return verified;
-      } else {
-        logEvent(""AGE CRITERIA VERIFICATION PASSED"");
-      }
-      var customerMonthlyIncome: real := aCustomer.getMonthlyIncome();
-      var customerMonthlyOutgoings: real := aCustomer.getMonthlyOutgoings();
-      verified := aLoan.verifyIncomeCriteria(customerMonthlyIncome, customerMonthlyOutgoings);
-      if !verified {
-        logEvent(""INCOME CRITERIA VERIFICATION FAILED"");
-        var message: string := ""Your application has failed the loan income criteria process"";
-        this.informCustomer(aCustomer, message);
-        return verified;
-      } else {
-        logEvent(""AGE CRITERIA VERIFICATION PASSED"");
-      }
-      var customerCreditScore: nat := this.obtainCustomerCreditScore(this.referenceAgency, aCustomer);
-      verified := aLoan.verifyCreditScore(customerCreditScore);
-      if !verified {
-        logEvent(""CREDIT SCORE CRITERIA VERIFICATION FAILED"");
-        var message: string := ""Your application has failed the credit score criteria process"";
-        this.informCustomer(aCustomer, message);
-        return verified;
-      } else {
-        logEvent(""CREDIT SCORE CRITERIA VERIFICATION PASSED"");
-      }
-      logEvent(""PROCESSING APPLICATION COMPLETE"");
-      return verified;
-    }
-
-    method addLoan(aLoan: PersonalLoan)
-      modifies this`loans
-      ensures aLoan in this.loans
-      decreases aLoan
-    {
-      this.loans := this.loans + {aLoan};
-    }
-
-    method addCustomer(aCustomer: Customer)
-      modifies this`customers
-      ensures aCustomer in this.customers
-      decreases aCustomer
-    {
-      this.customers := this.customers + {aCustomer};
-    }
-
-    method informCustomer(aCustomer: Customer, message: string)
-      decreases aCustomer, message
-    {
-      var customerName := aCustomer.getName();
-      var customerMessage := ""Customer Message: "" + customerName + "" :: "" + message;
-      print ""\n"", customerMessage, ""\n\n"";
-    }
-
-    method obtainCustomerCreditScore(referenceAgency: CreditReferenceAgency, aCustomer: Customer) returns (score: nat)
-      decreases referenceAgency, aCustomer
-    {
-      logEvent(""CUSTOMER CREDIT SCORE REQUESTED"");
-      var customerName: string := aCustomer.getName();
-      assume {:axiom} customerName in referenceAgency.creditScores;
-      var aScore: nat := referenceAgency.getCreditScore(customerName);
-      logEvent(""CUSTOMER CREDIT SCORE OBTAINED"");
-      var scoreMessage: string := ""Customer credit score: "" + customerName + "": "";
-      print scoreMessage, aScore, ""\n"";
-      return aScore;
-    }
-
-    method verifyCapitalAmount(fundValue: nat, fundMinimum: nat, loanAmount: nat)
-        returns (isVerified: bool)
-      ensures isVerified == (fundValue - loanAmount >= fundMinimum)
-      ensures !isVerified == (fundValue - loanAmount < fundMinimum)
-      decreases fundValue, fundMinimum, loanAmount
-    {
-      logEvent(""CAPITAL FUND VERIFICATION COMPLETE"");
-      return fundValue - loanAmount >= fundMinimum;
-    }
-
-    method reserveLoanFunds(theLoan: PersonalLoan) returns (success: bool)
-      modifies this`capitalFundValue, this`reservedFunds
-      ensures this.capitalFundValue + this.reservedFunds == old(capitalFundValue) + old(reservedFunds)
-      decreases theLoan
-    {
-      var loanAmount: nat := theLoan.getRequiredAmount();
-      var startingCapitalfund: nat := this.capitalFundValue;
-      var startingReserveFund: nat := this.reservedFunds;
-      assume {:axiom} this.capitalFundValue - loanAmount > 0;
-      this.capitalFundValue := this.capitalFundValue - loanAmount;
-      this.reservedFunds := this.reservedFunds + loanAmount;
-      var finishingCapitalFund: nat := this.capitalFundValue;
-      var finishingReservedFund: nat := this.reservedFunds;
-      var both: bool := finishingCapitalFund == startingCapitalfund - loanAmount && finishingReservedFund == startingReserveFund + loanAmount;
-      logEvent(""LOAN FUNDS RESERVED"");
-      this.printFundValues();
-      return both;
-    }
-
-    method completeApplication(theCustomer: Customer, theLoan: PersonalLoan)
-      requires !(theLoan.statusPending == theLoan.statusRejected == theLoan.statusApproved)
-      modifies this`capitalFundValue, this`reservedFunds
-      decreases theCustomer, theLoan
-    {
-      logEvent(""BEGINNING APPLICATION COMPLETION PROCESS"");
-      var loanStatus: string := theLoan.getStatus();
-      if loanStatus == ""rejected"" {
-        var message1: string := ""We are sorry that your application cannot be processed at this time."";
-        var fundsReleased: bool := this.releaseLoanFunds(theLoan);
-        if fundsReleased {
-          var message2: string := ""LOAN FUNDS RELEASED"";
-          this.logEvent(message2);
-          this.informCustomer(theCustomer, message1);
-        }
-      }
-      if loanStatus == ""approved"" {
-        var success: bool := transferLoanToCustomer(theLoan, theCustomer);
-        var accNo: string, sortCode: string := theCustomer.getPaymentDetails();
-        var message: string := ""Your application has been successful. The required loan amount will be transferred to account number: "" + accNo + "" sort code: "" + sortCode;
-        this.informCustomer(theCustomer, message);
-      }
-    }
-
-    method releaseLoanFunds(theLoan: PersonalLoan) returns (success: bool)
-      modifies this`capitalFundValue, this`reservedFunds
-      ensures this.capitalFundValue + this.reservedFunds == old(capitalFundValue) + old(reservedFunds)
-      decreases theLoan
-    {
-      var loanAmount: nat := theLoan.getRequiredAmount();
-      var startingCapitalfund: nat := this.capitalFundValue;
-      var startingReserveFund: nat := this.reservedFunds;
-      this.capitalFundValue := this.capitalFundValue + loanAmount;
-      assume {:axiom} this.reservedFunds - loanAmount > 0;
-      this.reservedFunds := this.reservedFunds - loanAmount;
-      var finishingCapitalFund: nat := this.capitalFundValue;
-      var finishingReservedFund: nat := this.reservedFunds;
-      var both: bool := finishingCapitalFund == startingCapitalfund + loanAmount && finishingReservedFund == startingReserveFund - loanAmount;
-      logEvent(""RESERVED LOAN FUNDS RELEASED"");
-      this.printFundValues();
-      return both;
-    }
-
-    method transferLoanToCustomer(theLoan: PersonalLoan, theCustomer: Customer) returns (success: bool)
-      modifies this`reservedFunds
-      ensures this.reservedFunds + theLoan.requiredAmount == old(reservedFunds)
-      decreases theLoan, theCustomer
-    {
-      var accNo: string, sortCode: string := theCustomer.getPaymentDetails();
-      var message: string := ""Transfer funds: account number:"" + accNo + "" sort code: "" + sortCode;
-      var loanAmount: nat := theLoan.getRequiredAmount();
-      var startingReserveFund: nat := this.reservedFunds;
-      assume {:axiom} this.reservedFunds - loanAmount > 0;
-      this.reservedFunds := this.reservedFunds - loanAmount;
-      var finishingReservedFund: nat := this.reservedFunds;
-      var transferred: bool := finishingReservedFund == startingReserveFund - loanAmount;
-      logEvent(""LOAN FUNDS TRANSFERRED"");
-      this.printFundValues();
-      return transferred;
-    }
-
-    method logEvent(eventMessage: string)
-      decreases eventMessage
-    {
-      var message: string := ""System Log: Event :: "" + eventMessage;
-      print message, ""\n"";
-    }
-
-    method printFundValues()
-    {
-      var cfv: string := ""CAPITAL FUND VALUE :: £"";
-      var rfv: string := ""RESERVED FUND VALUE :: £"";
-      print cfv, this.capitalFundValue, ""\n"", rfv, this.reservedFunds, ""\n"";
-    }
-  }
-}
-
-module {:extern ""User""} User {
-
-  export
-    reveals *
-    reveals Customer, Customer.name, Customer.age, Customer.accountNumber, Customer.sortCode, Customer.monthlyIncome, Customer.monthlyOutgoings, Customer.referenceGenerator
-    provides Customer.customerReference, Customer._ctor, Customer.getName, Customer.getAge, Customer.getPaymentDetails, Customer.getMonthlyIncome, Customer.getMonthlyOutgoings, Customer.getCustomerReference, Customer.printCustomerDetails
-    reveals Reference
-    provides Reference.reference, Reference._ctor, Reference.getReferenceNumber
-
-  class Customer {
-    const name: string
-    const age: nat
-    const accountNumber: string
-    const sortCode: string
-    const monthlyIncome: real
-    const monthlyOutgoings: real
-    const referenceGenerator: Reference?
-    var customerReference: nat
-
-    constructor (aName: string, anAge: nat, anAccountNumber: string, aSortCode: string, aMonthlyIncome: real, aMonthlyOutgoing: real)
-      ensures this.name == aName
-      ensures this.age == anAge
-      ensures this.accountNumber == anAccountNumber
-      ensures this.sortCode == aSortCode
-      ensures this.monthlyIncome == aMonthlyIncome
-      ensures this.monthlyOutgoings == aMonthlyOutgoing
-      decreases aName, anAge, anAccountNumber, aSortCode, aMonthlyIncome, aMonthlyOutgoing
-    {
-      this.name := aName;
-      this.age := anAge;
-      this.accountNumber := anAccountNumber;
-      this.sortCode := aSortCode;
-      this.monthlyIncome := aMonthlyIncome;
-      this.monthlyOutgoings := aMonthlyOutgoing;
-      this.referenceGenerator := new Reference();
-      new;
-      if this.referenceGenerator == null {
-        this.customerReference := 999999999;
-      } else {
-        this.customerReference := this.referenceGenerator.getReferenceNumber();
-      }
-    }
-
-    method getName() returns (customerName: string)
-      ensures customerName == this.name
-    {
-      return this.name;
-    }
-
-    method getAge() returns (customerAge: nat)
-      ensures customerAge == this.age
-    {
-      return this.age;
-    }
-
-    method getPaymentDetails() returns (accountNumber: string, sortCode: string)
-      ensures accountNumber == this.accountNumber
-      ensures sortCode == this.sortCode
-    {
-      return this.accountNumber, this.sortCode;
-    }
-
-    method getMonthlyIncome() returns (income: real)
-      ensures income == this.monthlyIncome
-    {
-      return this.monthlyIncome;
-    }
-
-    method getMonthlyOutgoings() returns (outgoings: real)
-      ensures outgoings == this.monthlyOutgoings
-    {
-      return this.monthlyOutgoings;
-    }
-
-    method getCustomerReference() returns (reference: nat)
-      ensures reference == this.customerReference
-    {
-      return this.customerReference;
-    }
-
-    method printCustomerDetails()
-    {
-      var ref: string := ""Customer reference number: "";
-      var name: string := ""Customer name: "";
-      var age: string := ""Customer age: "";
-      var acc: string := ""Customer account number: "";
-      var sort: string := ""Customer sort code: "";
-      var income: string := ""Customer monthly income: £"";
-      var outgoings: string := ""Customer monthly expenditure: £"";
-      print ref, this.customerReference, ""\n"", name, this.name, ""\n"", age, this.age, ""\n"", acc, this.accountNumber, ""\n"", sort, this.sortCode, ""\n"", income, this.monthlyIncome, ""\n"", outgoings, this.monthlyOutgoings, ""\n"";
-    }
-  }
-
-  class Reference {
-    var reference: nat
-
-    constructor ()
-    {
-      reference := 1000000;
-    }
-
-    method getReferenceNumber() returns (ref: nat)
-      modifies this`reference
-      ensures ref == old(this.reference)
-      ensures this.reference == old(this.reference) + 1
-    {
-      var ref_old: nat := this.reference;
-      this.reference := this.reference + 1;
-      return ref_old;
-    }
-  }
-}
-
-module {:extern ""Product""} Product {
-
-  export
-    reveals *
-    reveals PersonalLoan, PersonalLoan.monthLoan24, PersonalLoan.monthLoan36, PersonalLoan.monthLoan48, PersonalLoan.monthLoan60, PersonalLoan.maxAge, PersonalLoan.incomeAffordabilityThreshold, PersonalLoan.goodCreditScoreThreshold, PersonalLoan.highInterestRate, PersonalLoan.lowInterestRate
-    provides PersonalLoan.calculateRepayment
-    reveals PersonalLoan.referenceGenerator, PersonalLoan.requiredAmount, PersonalLoan.repaymentPeriod, PersonalLoan.interestRate, PersonalLoan.totalAmountRepayable, PersonalLoan.monthlyRepaymentAmount
-    provides PersonalLoan.referenceNumber, PersonalLoan.statusPending, PersonalLoan.statusRejected, PersonalLoan.statusApproved, PersonalLoan._ctor, PersonalLoan.setStatus, PersonalLoan.setStatusPending, PersonalLoan.setStatusRejected, PersonalLoan.setStatusApproved, PersonalLoan.getStatus, PersonalLoan.verifyAgeCriteria, PersonalLoan.verifyIncomeCriteria, PersonalLoan.verifyCreditScore, PersonalLoan.getLoanReference, PersonalLoan.getRequiredAmount, PersonalLoan.printLoanDetails
-    reveals Reference
-    provides Reference.reference, Reference._ctor, Reference.getReferenceNumber
-
-  class PersonalLoan {
-    static const monthLoan24: map<nat, real> := map[5000 := 5694.72, 5100 := 5808.72, 5200 := 5922.72, 5300 := 6036.48, 5400 := 6150.48, 5500 := 6264.24, 5600 := 6378.24, 5700 := 6492.0, 5800 := 6606.0, 5900 := 6720.0, 6000 := 6833.76, 6100 := 6947.76, 6200 := 7061.52, 6300 := 7175.52, 6400 := 7289.28, 6500 := 7403.28, 6600 := 7517.28, 6700 := 7631.04, 6800 := 7745.04, 6900 := 7858.8, 7000 := 7972.8, 7100 := 8086.56, 7200 := 8200.56, 7300 := 8314.56, 7400 := 8428.32, 7500 := 7987.92, 7600 := 8094.24, 7700 := 8200.8, 7800 := 8307.36, 7900 := 8413.92, 8000 := 8520.48, 8100 := 8626.8, 8200 := 8733.36, 8300 := 8839.92, 8400 := 8946.48, 8500 := 9052.8, 8600 := 9159.36, 8700 := 9265.92, 8800 := 9372.48, 8900 := 9478.8, 9000 := 9585.36, 9100 := 9691.92, 9200 := 9798.48, 9300 := 9905.04, 9400 := 10011.36, 9500 := 10117.92, 9600 := 10224.48, 9700 := 10331.04, 9800 := 10437.36, 9900 := 10543.92, 10000 := 10650.48]
-    static const monthLoan36: map<nat, real> := map[5000 := 6049.08, 5100 := 6170.04, 5200 := 6291.36, 5300 := 6412.32, 5400 := 6533.28, 5500 := 6654.24, 5600 := 6775.2, 5700 := 6896.16, 5800 := 7017.12, 5900 := 7138.08, 6000 := 7259.04, 6100 := 7380.0, 6200 := 7500.96, 6300 := 7621.92, 6400 := 7742.88, 6500 := 7863.84, 6600 := 7985.16, 6700 := 8106.12, 6800 := 8227.08, 6900 := 8348.04, 7000 := 8469.0, 7100 := 8589.96, 7200 := 8710.92, 7300 := 8831.88, 7400 := 8952.84, 7500 := 8229.24, 7600 := 8339.04, 7700 := 8448.84, 7800 := 8558.28, 7900 := 8668.08, 8000 := 8777.88, 8100 := 8887.68, 8200 := 8997.12, 8300 := 9106.92, 8400 := 9216.72, 8500 := 9326.52, 8600 := 9436.32, 8700 := 9545.76, 8800 := 9655.56, 8900 := 9765.36, 9000 := 9875.16, 9100 := 9984.96, 9200 := 10094.4, 9300 := 10204.2, 9400 := 10314.0, 9500 := 10423.8, 9600 := 10533.24, 9700 := 10643.04, 9800 := 10752.84, 9900 := 10862.64, 10000 := 10972.44]
-    static const monthLoan48: map<nat, real> := map[5000 := 6417.12, 5100 := 6545.28, 5200 := 6673.92, 5300 := 6802.08, 5400 := 6930.24, 5500 := 7058.88, 5600 := 7187.04, 5700 := 7315.68, 5800 := 7443.84, 5900 := 7572.0, 6000 := 7700.64, 6100 := 7828.8, 6200 := 7956.96, 6300 := 8085.6, 6400 := 8213.76, 6500 := 8342.4, 6600 := 8470.56, 6700 := 8598.72, 6800 := 8727.36, 6900 := 8855.52, 7000 := 8983.68, 7100 := 9112.32, 7200 := 9240.48, 7300 := 9369.12, 7400 := 9497.28, 7500 := 8475.36, 7600 := 8588.16, 7700 := 8701.44, 7800 := 8814.24, 7900 := 8927.04, 8000 := 9040.32, 8100 := 9153.12, 8200 := 9266.4, 8300 := 9379.2, 8400 := 9492.48, 8500 := 9605.28, 8600 := 9718.08, 8700 := 9831.36, 8800 := 9944.16, 8900 := 10057.44, 9000 := 10170.24, 9100 := 10283.52, 9200 := 10396.32, 9300 := 10509.12, 9400 := 10622.4, 9500 := 10735.2, 9600 := 10848.48, 9700 := 10961.28, 9800 := 11074.56, 9900 := 11187.36, 10000 := 11300.16]
-    static const monthLoan60: map<nat, real> := map[5000 := 6798.0, 5100 := 6934.2, 5200 := 7069.8, 5300 := 7206.0, 5400 := 7342.2, 5500 := 7477.8, 5600 := 7614.0, 5700 := 7749.6, 5800 := 7885.8, 5900 := 8022.0, 6000 := 8157.6, 6100 := 8293.8, 6200 := 8430.0, 6300 := 8565.6, 6400 := 8701.8, 6500 := 8837.4, 6600 := 8973.6, 6700 := 9109.8, 6800 := 9245.4, 6900 := 9381.6, 7000 := 9517.2, 7100 := 9653.4, 7200 := 9789.6, 7300 := 9925.2, 7400 := 10061.4, 7500 := 8725.8, 7600 := 8842.2, 7700 := 8958.6, 7800 := 9075.0, 7900 := 9191.4, 8000 := 9307.8, 8100 := 9424.2, 8200 := 9540.6, 8300 := 9657.0, 8400 := 9772.8, 8500 := 9889.2, 8600 := 10005.6, 8700 := 10112.0, 8800 := 10238.4, 8900 := 10354.8, 9000 := 10471.2, 9100 := 10587.6, 9200 := 10704.0, 9300 := 10820.4, 9400 := 10936.8, 9500 := 11052.6, 9600 := 11169.0, 9700 := 11285.4, 9800 := 11401.8, 9900 := 11518.2, 10000 := 11634.6]
-    static const maxAge: nat := 67 * 12
-    static const incomeAffordabilityThreshold: real := 0.8
-    static const goodCreditScoreThreshold: nat := 881
-    static const highInterestRate: real := 13.6
-    static const lowInterestRate: real := 6.3
-
-    static method calculateRepayment(anAmount: nat, repaymentPeriod: nat)
-        returns (totalAmountRepayable: real, monthlyRepaymentAmount: real)
-      requires anAmount in PersonalLoan.monthLoan24 || anAmount in PersonalLoan.monthLoan36 || anAmount in PersonalLoan.monthLoan48 || anAmount in PersonalLoan.monthLoan60
-      requires repaymentPeriod == 24 || repaymentPeriod == 36 || repaymentPeriod == 48 || repaymentPeriod == 60
-      ensures totalAmountRepayable == PersonalLoan.monthLoan24[anAmount] || totalAmountRepayable == PersonalLoan.monthLoan36[anAmount] || totalAmountRepayable == PersonalLoan.monthLoan48[anAmount] || totalAmountRepayable == PersonalLoan.monthLoan60[anAmount]
-      ensures monthlyRepaymentAmount == PersonalLoan.monthLoan24[anAmount] / 24 as real || monthlyRepaymentAmount == PersonalLoan.monthLoan36[anAmount] / 36 as real || monthlyRepaymentAmount == PersonalLoan.monthLoan48[anAmount] / 48 as real || monthlyRepaymentAmount == PersonalLoan.monthLoan60[anAmount] / 60 as real
-      decreases anAmount, repaymentPeriod
-    {
-      var totalAmount: real;
-      if {
-        case repaymentPeriod == 24 =>
-          totalAmount := PersonalLoan.monthLoan24[anAmount];
-        case repaymentPeriod == 36 =>
-          totalAmount := PersonalLoan.monthLoan36[anAmount];
-        case repaymentPeriod == 48 =>
-          totalAmount := PersonalLoan.monthLoan48[anAmount];
-        case repaymentPeriod == 60 =>
-          totalAmount := PersonalLoan.monthLoan60[anAmount];
-      }
-      var monthlyAmount: real := totalAmount / repaymentPeriod as real;
-      return totalAmount, monthlyAmount;
-    }
-
-    const referenceGenerator: Reference?
-    const requiredAmount: nat
-    const repaymentPeriod: nat
-    const interestRate: real
-    const totalAmountRepayable: real
-    const monthlyRepaymentAmount: real
-    var referenceNumber: nat
-    var statusPending: bool
-    var statusRejected: bool
-    var statusApproved: bool
-
-    constructor (aRequiredAmount: nat, aRepaymentPeriod: nat, anInterestRate: real)
-      requires aRequiredAmount in PersonalLoan.monthLoan24 || aRequiredAmount in PersonalLoan.monthLoan36 || aRequiredAmount in PersonalLoan.monthLoan48 || aRequiredAmount in PersonalLoan.monthLoan60
-      requires aRepaymentPeriod == 24 || aRepaymentPeriod == 36 || aRepaymentPeriod == 48 || aRepaymentPeriod == 60
-      requires anInterestRate == PersonalLoan.lowInterestRate || anInterestRate == PersonalLoan.highInterestRate
-      ensures this.requiredAmount == aRequiredAmount
-      ensures this.repaymentPeriod == aRepaymentPeriod
-      ensures this.interestRate == anInterestRate
-      ensures this.totalAmountRepayable == PersonalLoan.monthLoan24[aRequiredAmount] || this.totalAmountRepayable == PersonalLoan.monthLoan36[aRequiredAmount] || this.totalAmountRepayable == PersonalLoan.monthLoan48[aRequiredAmount] || this.totalAmountRepayable == PersonalLoan.monthLoan60[aRequiredAmount]
-      ensures this.statusPending == true
-      ensures this.statusRejected == this.statusApproved
-      ensures this.statusPending != (this.statusRejected || this.statusApproved)
-      decreases aRequiredAmount, aRepaymentPeriod, anInterestRate
-    {
-      this.referenceGenerator := new Reference();
-      this.requiredAmount := aRequiredAmount;
-      this.repaymentPeriod := aRepaymentPeriod;
-      this.interestRate := anInterestRate;
-      var total, monthly: real := PersonalLoan.calculateRepayment(aRequiredAmount, aRepaymentPeriod);
-      this.totalAmountRepayable := total;
-      this.monthlyRepaymentAmount := monthly;
-      this.statusPending := true;
-      this.statusRejected := false;
-      this.statusApproved := false;
-      new;
-      if this.referenceGenerator == null {
-        this.referenceNumber := 999999999;
-      } else {
-        this.referenceNumber := this.referenceGenerator.getReferenceNumber();
-      }
-    }
-
-    method setStatus(status: string)
-      requires status == ""pending"" || status == ""rejected"" || status == ""approved""
-      modifies this`statusPending, this`statusRejected, this`statusApproved
-      decreases status
-    {
-      if {
-        case status == ""pending"" =>
-          setStatusPending();
-        case status == ""rejected"" =>
-          setStatusRejected();
-        case status == ""approved"" =>
-          setStatusApproved();
-      }
-    }
-
-    method setStatusPending()
-      modifies this`statusRejected, this`statusApproved, this`statusPending
-      ensures this.statusPending == true
-      ensures this.statusRejected == false
-      ensures this.statusApproved == false
-      ensures !(this.statusPending == this.statusRejected == this.statusApproved)
-    {
-      this.statusRejected := false;
-      this.statusApproved := false;
-      this.statusPending := true;
-    }
-
-    method setStatusRejected()
-      modifies this`statusPending, this`statusApproved, this`statusRejected
-      ensures this.statusRejected == true
-      ensures this.statusPending == false
-      ensures this.statusApproved == false
-      ensures !(this.statusPending == this.statusRejected == this.statusApproved)
-    {
-      this.statusPending := false;
-      this.statusApproved := false;
-      this.statusRejected := true;
-    }
-
-    method setStatusApproved()
-      modifies this`statusPending, this`statusRejected, this`statusApproved
-      ensures this.statusApproved == true
-      ensures this.statusPending == false
-      ensures this.statusRejected == false
-      ensures !(this.statusPending == this.statusRejected == this.statusApproved)
-    {
-      this.statusPending := false;
-      this.statusRejected := false;
-      this.statusApproved := true;
-    }
-
-    method getStatus() returns (status: string)
-      requires !(this.statusPending == this.statusRejected == this.statusApproved)
-      ensures status == ""pending"" || status == ""rejected"" || status == ""approved""
-    {
-      if {
-        case this.statusPending == true =>
-          return ""pending"";
-        case this.statusRejected == true =>
-          return ""rejected"";
-        case this.statusApproved == true =>
-          return ""approved"";
-      }
-    }
-
-    method verifyAgeCriteria(customerAge: nat) returns (isVerified: bool)
-      ensures isVerified == (customerAge * 12 + this.repaymentPeriod <= PersonalLoan.maxAge)
-      ensures !isVerified == (customerAge * 12 + this.repaymentPeriod > PersonalLoan.maxAge)
-      decreases customerAge
-    {
-      var ageWhenLoanComplete: nat := customerAge * 12 + this.repaymentPeriod;
-      return ageWhenLoanComplete <= PersonalLoan.maxAge;
-    }
-
-    method verifyIncomeCriteria(customerMonthlyIncome: real, customerMonthlyOutgoings: real) returns (isVerified: bool)
-      ensures isVerified == (customerMonthlyIncome * 0.8 >= customerMonthlyOutgoings + this.monthlyRepaymentAmount)
-      ensures !isVerified == (customerMonthlyIncome * 0.8 < customerMonthlyOutgoings + this.monthlyRepaymentAmount)
-      decreases customerMonthlyIncome, customerMonthlyOutgoings
-    {
-      var totalOutgoings: real := customerMonthlyOutgoings + this.monthlyRepaymentAmount;
-      var adjustedIncommings: real := customerMonthlyIncome * PersonalLoan.incomeAffordabilityThreshold;
-      return adjustedIncommings >= totalOutgoings;
-    }
-
-    method verifyCreditScore(customerCreditScore: nat) returns (isVerified: bool)
-      ensures isVerified == (customerCreditScore >= PersonalLoan.goodCreditScoreThreshold)
-      ensures !isVerified == (customerCreditScore < PersonalLoan.goodCreditScoreThreshold)
-      decreases customerCreditScore
-    {
-      return customerCreditScore >= PersonalLoan.goodCreditScoreThreshold;
-    }
-
-    method getLoanReference() returns (reference: nat)
-      ensures reference == this.referenceNumber
-    {
-      return this.referenceNumber;
-    }
-
-    method getRequiredAmount() returns (amount: nat)
-      ensures amount == this.requiredAmount
-    {
-      return this.requiredAmount;
-    }
-
-    method printLoanDetails()
-      requires !(this.statusPending == this.statusRejected == this.statusApproved)
-    {
-      var ref: string := ""Loan reference number: "";
-      var amount: string := ""Required amount: £"";
-      var period: string := ""Required repayment period: "";
-      var rate: string := ""Interest rate "";
-      var total: string := ""Total repayable amount: £"";
-      var monthly: string := ""Monthly repayable amount: £"";
-      var status: string := ""Current loan status: "";
-      var currentStatus: string := this.getStatus();
-      print ref, this.referenceNumber, ""\n"", amount, this.requiredAmount, "".00"", ""\n"", period, this.repaymentPeriod, "" months"", ""\n"", rate, this.interestRate, ""%"", ""\n"", total, this.totalAmountRepayable, ""\n"", monthly, this.monthlyRepaymentAmount, ""\n"", status, currentStatus, ""\n"";
-    }
-  }
-
-  class Reference {
-    var reference: nat
-
-    constructor ()
-    {
-      reference := 1000000;
-    }
-
-    method getReferenceNumber() returns (ref: nat)
-      modifies this`reference
-      ensures ref == old(this.reference)
-      ensures this.reference == old(this.reference) + 1
-    {
-      var ref_old: nat := this.reference;
-      this.reference := this.reference + 1;
-      return ref_old;
-    }
-  }
-}
-
-module {:extern ""Support""} Support {
-
-  export
-    reveals *
-    reveals CreditReferenceAgency, CreditReferenceAgency.creditScoreMin, CreditReferenceAgency.creditScoreMax, CreditReferenceAgency.creditScoreGood
-    provides CreditReferenceAgency.creditScores, CreditReferenceAgency._ctor, CreditReferenceAgency.addPerson, CreditReferenceAgency.getCreditScore
-
-  class CreditReferenceAgency {
-    static const creditScoreMin: nat := 0
-    static const creditScoreMax: nat := 999
-    static const creditScoreGood: nat := 881
-    var creditScores: map<string, nat>
-
-    constructor ()
-    {
-    }
-
-    method addPerson(name: string, creditScoreSetup: string)
-      requires creditScoreSetup == ""pass"" || creditScoreSetup == ""fail""
-      modifies this`creditScores
-      ensures name in creditScores
-      ensures CreditReferenceAgency.creditScoreMin <= creditScores[name] <= CreditReferenceAgency.creditScoreMax
-      decreases name, creditScoreSetup
-    {
-      var aCreditScore: nat := 0;
-      if {
-        case creditScoreSetup == ""pass"" =>
-          aCreditScore :| CreditReferenceAgency.creditScoreGood <= aCreditScore <= CreditReferenceAgency.creditScoreMax;
-        case creditScoreSetup == ""fail"" =>
-          aCreditScore :| CreditReferenceAgency.creditScoreMin <= aCreditScore < CreditReferenceAgency.creditScoreGood;
-      }
-      this.creditScores := map[name := aCreditScore];
-    }
-
-    method getCreditScore(name: string) returns (creditScore: nat)
-      requires name in creditScores
-      ensures creditScore == this.creditScores[name]
-      decreases name
-    {
-      return this.creditScores[name];
-    }
-  }
-}
-")]
-*///******************************* END OF REMOVED SECTION **************************************************************
 
 namespace Dafny {
   internal class ArrayHelpers {
@@ -773,36 +56,9 @@ namespace Support {
     public void __ctor()
     {
     }
-    public void addPerson(Dafny.ISequence<Dafny.Rune> name, Dafny.ISequence<Dafny.Rune> creditScoreSetup)
+    public void addPerson(Dafny.ISequence<Dafny.Rune> name, BigInteger creditScoreSetup)
     {
-      BigInteger _0_aCreditScore;
-      _0_aCreditScore = BigInteger.Zero;
-      if ((creditScoreSetup).Equals(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("pass"))) {
-        foreach (BigInteger _assign_such_that_0 in Dafny.Helpers.IntegerRange(BigInteger.Zero, (Support.CreditReferenceAgency.creditScoreMax) + (BigInteger.One))) {
-          _0_aCreditScore = (BigInteger)_assign_such_that_0;
-          if (_System.nat._Is(_0_aCreditScore)) {
-            if (((Support.CreditReferenceAgency.creditScoreGood) <= (_0_aCreditScore)) && ((_0_aCreditScore) <= (Support.CreditReferenceAgency.creditScoreMax))) {
-              goto after__ASSIGN_SUCH_THAT_0;
-            }
-          }
-        }
-        throw new System.Exception("assign-such-that search produced no value (line 37)");
-      after__ASSIGN_SUCH_THAT_0: ;
-      } else if ((creditScoreSetup).Equals(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("fail"))) {
-        foreach (BigInteger _assign_such_that_1 in Dafny.Helpers.IntegerRange(BigInteger.Zero, Support.CreditReferenceAgency.creditScoreGood)) {
-          _0_aCreditScore = (BigInteger)_assign_such_that_1;
-          if (_System.nat._Is(_0_aCreditScore)) {
-            if (((Support.CreditReferenceAgency.creditScoreMin) <= (_0_aCreditScore)) && ((_0_aCreditScore) < (Support.CreditReferenceAgency.creditScoreGood))) {
-              goto after__ASSIGN_SUCH_THAT_1;
-            }
-          }
-        }
-        throw new System.Exception("assign-such-that search produced no value (line 38)");
-      after__ASSIGN_SUCH_THAT_1: ;
-      } else {
-        throw new System.Exception("unreachable alternative");
-      }
-      (this).creditScores = Dafny.Map<Dafny.ISequence<Dafny.Rune>, BigInteger>.FromElements(new Dafny.Pair<Dafny.ISequence<Dafny.Rune>, BigInteger>(name, _0_aCreditScore));
+      (this).creditScores = Dafny.Map<Dafny.ISequence<Dafny.Rune>, BigInteger>.FromElements(new Dafny.Pair<Dafny.ISequence<Dafny.Rune>, BigInteger>(name, creditScoreSetup));
     }
     public BigInteger getCreditScore(Dafny.ISequence<Dafny.Rune> name)
     {
@@ -826,7 +82,6 @@ namespace Product {
 
   public partial class PersonalLoan {
     public PersonalLoan() {
-      this.referenceNumber = BigInteger.Zero;
       this.statusPending = false;
       this.statusRejected = false;
       this.statusApproved = false;
@@ -834,64 +89,54 @@ namespace Product {
       this._repaymentPeriod = BigInteger.Zero;
       this._interestRate = Dafny.BigRational.ZERO;
       this._totalAmountRepayable = Dafny.BigRational.ZERO;
-      this._referenceGenerator = ((Product.Reference)null);
+      this._referenceNumber = BigInteger.Zero;
       this._monthlyRepaymentAmount = Dafny.BigRational.ZERO;
     }
     public static void calculateRepayment(BigInteger anAmount, BigInteger repaymentPeriod, out Dafny.BigRational totalAmountRepayable, out Dafny.BigRational monthlyRepaymentAmount)
     {
       totalAmountRepayable = Dafny.BigRational.ZERO;
       monthlyRepaymentAmount = Dafny.BigRational.ZERO;
-      Dafny.BigRational _1_totalAmount = Dafny.BigRational.ZERO;
+      Dafny.BigRational _0_totalAmount = Dafny.BigRational.ZERO;
       if ((repaymentPeriod) == (new BigInteger(24))) {
-        _1_totalAmount = Dafny.Map<BigInteger, Dafny.BigRational>.Select(Product.PersonalLoan.monthLoan24,anAmount);
+        _0_totalAmount = Dafny.Map<BigInteger, Dafny.BigRational>.Select(Product.PersonalLoan.monthLoan24,anAmount);
       } else if ((repaymentPeriod) == (new BigInteger(36))) {
-        _1_totalAmount = Dafny.Map<BigInteger, Dafny.BigRational>.Select(Product.PersonalLoan.monthLoan36,anAmount);
+        _0_totalAmount = Dafny.Map<BigInteger, Dafny.BigRational>.Select(Product.PersonalLoan.monthLoan36,anAmount);
       } else if ((repaymentPeriod) == (new BigInteger(48))) {
-        _1_totalAmount = Dafny.Map<BigInteger, Dafny.BigRational>.Select(Product.PersonalLoan.monthLoan48,anAmount);
+        _0_totalAmount = Dafny.Map<BigInteger, Dafny.BigRational>.Select(Product.PersonalLoan.monthLoan48,anAmount);
       } else if ((repaymentPeriod) == (new BigInteger(60))) {
-        _1_totalAmount = Dafny.Map<BigInteger, Dafny.BigRational>.Select(Product.PersonalLoan.monthLoan60,anAmount);
+        _0_totalAmount = Dafny.Map<BigInteger, Dafny.BigRational>.Select(Product.PersonalLoan.monthLoan60,anAmount);
       } else {
         throw new System.Exception("unreachable alternative");
       }
-      Dafny.BigRational _2_monthlyAmount;
-      _2_monthlyAmount = (_1_totalAmount) / (new Dafny.BigRational((repaymentPeriod), BigInteger.One));
-      Dafny.BigRational _rhs0 = _1_totalAmount;
-      Dafny.BigRational _rhs1 = _2_monthlyAmount;
+      Dafny.BigRational _1_monthlyAmount;
+      _1_monthlyAmount = (_0_totalAmount) / (new Dafny.BigRational((repaymentPeriod), BigInteger.One));
+      Dafny.BigRational _rhs0 = _0_totalAmount;
+      Dafny.BigRational _rhs1 = _1_monthlyAmount;
       totalAmountRepayable = _rhs0;
       monthlyRepaymentAmount = _rhs1;
       return ;
     }
-    public BigInteger referenceNumber {get; set;}
     public bool statusPending {get; set;}
     public bool statusRejected {get; set;}
     public bool statusApproved {get; set;}
-    public void __ctor(BigInteger aRequiredAmount, BigInteger aRepaymentPeriod, Dafny.BigRational anInterestRate)
+    public void __ctor(BigInteger aRequiredAmount, BigInteger aRepaymentPeriod, Dafny.BigRational anInterestRate, BigInteger aReferenceNumber)
     {
-      Product.Reference _nw0 = new Product.Reference();
-      _nw0.__ctor();
-      (this)._referenceGenerator = _nw0;
+      (this)._referenceNumber = aReferenceNumber;
       (this)._requiredAmount = aRequiredAmount;
       (this)._repaymentPeriod = aRepaymentPeriod;
       (this)._interestRate = anInterestRate;
-      Dafny.BigRational _3_total;
-      Dafny.BigRational _4_monthly;
+      Dafny.BigRational _2_total;
+      Dafny.BigRational _3_monthly;
       Dafny.BigRational _out0;
       Dafny.BigRational _out1;
       Product.PersonalLoan.calculateRepayment(aRequiredAmount, aRepaymentPeriod, out _out0, out _out1);
-      _3_total = _out0;
-      _4_monthly = _out1;
-      (this)._totalAmountRepayable = _3_total;
-      (this)._monthlyRepaymentAmount = _4_monthly;
+      _2_total = _out0;
+      _3_monthly = _out1;
+      (this)._totalAmountRepayable = _2_total;
+      (this)._monthlyRepaymentAmount = _3_monthly;
       (this).statusPending = true;
       (this).statusRejected = false;
       (this).statusApproved = false;
-      if (((this).referenceGenerator) == (object) ((Product.Reference)null)) {
-        (this).referenceNumber = new BigInteger(999999999);
-      } else {
-        BigInteger _out2;
-        _out2 = ((this).referenceGenerator).getReferenceNumber();
-        (this).referenceNumber = _out2;
-      }
     }
     public void setStatus(Dafny.ISequence<Dafny.Rune> status)
     {
@@ -942,19 +187,19 @@ namespace Product {
     public bool verifyAgeCriteria(BigInteger customerAge)
     {
       bool isVerified = false;
-      BigInteger _5_ageWhenLoanComplete;
-      _5_ageWhenLoanComplete = ((customerAge) * (new BigInteger(12))) + ((this).repaymentPeriod);
-      isVerified = (_5_ageWhenLoanComplete) <= (Product.PersonalLoan.maxAge);
+      BigInteger _4_ageWhenLoanComplete;
+      _4_ageWhenLoanComplete = ((customerAge) * (new BigInteger(12))) + ((this).repaymentPeriod);
+      isVerified = (_4_ageWhenLoanComplete) <= (Product.PersonalLoan.maxAge);
       return isVerified;
     }
     public bool verifyIncomeCriteria(Dafny.BigRational customerMonthlyIncome, Dafny.BigRational customerMonthlyOutgoings)
     {
       bool isVerified = false;
-      Dafny.BigRational _6_totalOutgoings;
-      _6_totalOutgoings = (customerMonthlyOutgoings) + ((this).monthlyRepaymentAmount);
-      Dafny.BigRational _7_adjustedIncommings;
-      _7_adjustedIncommings = (customerMonthlyIncome) * (Product.PersonalLoan.incomeAffordabilityThreshold);
-      isVerified = (_7_adjustedIncommings) >= (_6_totalOutgoings);
+      Dafny.BigRational _5_totalOutgoings;
+      _5_totalOutgoings = (customerMonthlyOutgoings) + ((this).monthlyRepaymentAmount);
+      Dafny.BigRational _6_adjustedIncommings;
+      _6_adjustedIncommings = (customerMonthlyIncome) * (Product.PersonalLoan.incomeAffordabilityThreshold);
+      isVerified = (_6_adjustedIncommings) >= (_5_totalOutgoings);
       return isVerified;
     }
     public bool verifyCreditScore(BigInteger customerCreditScore)
@@ -966,7 +211,7 @@ namespace Product {
     public BigInteger getLoanReference()
     {
       BigInteger reference = BigInteger.Zero;
-      reference = this.referenceNumber;
+      reference = (this).referenceNumber;
       return reference;
     }
     public BigInteger getRequiredAmount()
@@ -977,47 +222,47 @@ namespace Product {
     }
     public void printLoanDetails()
     {
-      Dafny.ISequence<Dafny.Rune> _8_ref;
-      _8_ref = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Loan reference number: ");
-      Dafny.ISequence<Dafny.Rune> _9_amount;
-      _9_amount = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Required amount: £");
-      Dafny.ISequence<Dafny.Rune> _10_period;
-      _10_period = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Required repayment period: ");
-      Dafny.ISequence<Dafny.Rune> _11_rate;
-      _11_rate = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Interest rate ");
-      Dafny.ISequence<Dafny.Rune> _12_total;
-      _12_total = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Total repayable amount: £");
-      Dafny.ISequence<Dafny.Rune> _13_monthly;
-      _13_monthly = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Monthly repayable amount: £");
-      Dafny.ISequence<Dafny.Rune> _14_status;
-      _14_status = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Current loan status: ");
-      Dafny.ISequence<Dafny.Rune> _15_currentStatus;
-      Dafny.ISequence<Dafny.Rune> _out3;
-      _out3 = (this).getStatus();
-      _15_currentStatus = _out3;
-      Dafny.Helpers.Print((_8_ref).ToVerbatimString(false));
-      Dafny.Helpers.Print((this.referenceNumber));
+      Dafny.ISequence<Dafny.Rune> _7_ref;
+      _7_ref = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Loan reference number: ");
+      Dafny.ISequence<Dafny.Rune> _8_amount;
+      _8_amount = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Required amount: £");
+      Dafny.ISequence<Dafny.Rune> _9_period;
+      _9_period = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Required repayment period: ");
+      Dafny.ISequence<Dafny.Rune> _10_rate;
+      _10_rate = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Interest rate ");
+      Dafny.ISequence<Dafny.Rune> _11_total;
+      _11_total = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Total repayable amount: £");
+      Dafny.ISequence<Dafny.Rune> _12_monthly;
+      _12_monthly = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Monthly repayable amount: £");
+      Dafny.ISequence<Dafny.Rune> _13_status;
+      _13_status = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Current loan status: ");
+      Dafny.ISequence<Dafny.Rune> _14_currentStatus;
+      Dafny.ISequence<Dafny.Rune> _out2;
+      _out2 = (this).getStatus();
+      _14_currentStatus = _out2;
+      Dafny.Helpers.Print((_7_ref).ToVerbatimString(false));
+      Dafny.Helpers.Print(((this).referenceNumber));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
-      Dafny.Helpers.Print((_9_amount).ToVerbatimString(false));
+      Dafny.Helpers.Print((_8_amount).ToVerbatimString(false));
       Dafny.Helpers.Print(((this).requiredAmount));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString(".00")).ToVerbatimString(false));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
-      Dafny.Helpers.Print((_10_period).ToVerbatimString(false));
+      Dafny.Helpers.Print((_9_period).ToVerbatimString(false));
       Dafny.Helpers.Print(((this).repaymentPeriod));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString(" months")).ToVerbatimString(false));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
-      Dafny.Helpers.Print((_11_rate).ToVerbatimString(false));
+      Dafny.Helpers.Print((_10_rate).ToVerbatimString(false));
       Dafny.Helpers.Print(((this).interestRate));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("%")).ToVerbatimString(false));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
-      Dafny.Helpers.Print((_12_total).ToVerbatimString(false));
+      Dafny.Helpers.Print((_11_total).ToVerbatimString(false));
       Dafny.Helpers.Print(((this).totalAmountRepayable));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
-      Dafny.Helpers.Print((_13_monthly).ToVerbatimString(false));
+      Dafny.Helpers.Print((_12_monthly).ToVerbatimString(false));
       Dafny.Helpers.Print(((this).monthlyRepaymentAmount));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
-      Dafny.Helpers.Print((_14_status).ToVerbatimString(false));
-      Dafny.Helpers.Print((_15_currentStatus).ToVerbatimString(false));
+      Dafny.Helpers.Print((_13_status).ToVerbatimString(false));
+      Dafny.Helpers.Print((_14_currentStatus).ToVerbatimString(false));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
     }
     public static Dafny.IMap<BigInteger,Dafny.BigRational> monthLoan24 { get {
@@ -1054,9 +299,9 @@ namespace Product {
     public Dafny.BigRational totalAmountRepayable { get {
       return this._totalAmountRepayable;
     } }
-    public Product.Reference _referenceGenerator {get; set;}
-    public Product.Reference referenceGenerator { get {
-      return this._referenceGenerator;
+    public BigInteger _referenceNumber {get; set;}
+    public BigInteger referenceNumber { get {
+      return this._referenceNumber;
     } }
     public Dafny.BigRational _monthlyRepaymentAmount {get; set;}
     public Dafny.BigRational monthlyRepaymentAmount { get {
@@ -1072,43 +317,21 @@ namespace Product {
       return new BigInteger(881);
     } }
   }
-
-  public partial class Reference {
-    public Reference() {
-      this.reference = BigInteger.Zero;
-    }
-    public BigInteger reference {get; set;}
-    public void __ctor()
-    {
-      (this).reference = new BigInteger(1000000);
-    }
-    public BigInteger getReferenceNumber()
-    {
-      BigInteger @ref = BigInteger.Zero;
-      BigInteger _16_ref__old;
-      _16_ref__old = this.reference;
-      (this).reference = (this.reference) + (BigInteger.One);
-      @ref = _16_ref__old;
-      return @ref;
-    }
-  }
 } // end of namespace Product
 namespace User {
 
 
   public partial class Customer {
     public Customer() {
-      this.customerReference = BigInteger.Zero;
       this._name = Dafny.Sequence<Dafny.Rune>.Empty;
       this._age = BigInteger.Zero;
       this._accountNumber = Dafny.Sequence<Dafny.Rune>.Empty;
       this._sortCode = Dafny.Sequence<Dafny.Rune>.Empty;
       this._monthlyIncome = Dafny.BigRational.ZERO;
       this._monthlyOutgoings = Dafny.BigRational.ZERO;
-      this._referenceGenerator = ((User.Reference)null);
+      this._customerReference = BigInteger.Zero;
     }
-    public BigInteger customerReference {get; set;}
-    public void __ctor(Dafny.ISequence<Dafny.Rune> aName, BigInteger anAge, Dafny.ISequence<Dafny.Rune> anAccountNumber, Dafny.ISequence<Dafny.Rune> aSortCode, Dafny.BigRational aMonthlyIncome, Dafny.BigRational aMonthlyOutgoing)
+    public void __ctor(Dafny.ISequence<Dafny.Rune> aName, BigInteger anAge, Dafny.ISequence<Dafny.Rune> anAccountNumber, Dafny.ISequence<Dafny.Rune> aSortCode, Dafny.BigRational aMonthlyIncome, Dafny.BigRational aMonthlyOutgoing, BigInteger aReference)
     {
       (this)._name = aName;
       (this)._age = anAge;
@@ -1116,16 +339,7 @@ namespace User {
       (this)._sortCode = aSortCode;
       (this)._monthlyIncome = aMonthlyIncome;
       (this)._monthlyOutgoings = aMonthlyOutgoing;
-      User.Reference _nw1 = new User.Reference();
-      _nw1.__ctor();
-      (this)._referenceGenerator = _nw1;
-      if (((this).referenceGenerator) == (object) ((User.Reference)null)) {
-        (this).customerReference = new BigInteger(999999999);
-      } else {
-        BigInteger _out4;
-        _out4 = ((this).referenceGenerator).getReferenceNumber();
-        (this).customerReference = _out4;
-      }
+      (this)._customerReference = aReference;
     }
     public Dafny.ISequence<Dafny.Rune> getName()
     {
@@ -1164,44 +378,44 @@ namespace User {
     public BigInteger getCustomerReference()
     {
       BigInteger reference = BigInteger.Zero;
-      reference = this.customerReference;
+      reference = (this).customerReference;
       return reference;
     }
     public void printCustomerDetails()
     {
-      Dafny.ISequence<Dafny.Rune> _17_ref;
-      _17_ref = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Customer reference number: ");
-      Dafny.ISequence<Dafny.Rune> _18_name;
-      _18_name = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Customer name: ");
-      Dafny.ISequence<Dafny.Rune> _19_age;
-      _19_age = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Customer age: ");
-      Dafny.ISequence<Dafny.Rune> _20_acc;
-      _20_acc = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Customer account number: ");
-      Dafny.ISequence<Dafny.Rune> _21_sort;
-      _21_sort = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Customer sort code: ");
-      Dafny.ISequence<Dafny.Rune> _22_income;
-      _22_income = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Customer monthly income: £");
-      Dafny.ISequence<Dafny.Rune> _23_outgoings;
-      _23_outgoings = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Customer monthly expenditure: £");
-      Dafny.Helpers.Print((_17_ref).ToVerbatimString(false));
-      Dafny.Helpers.Print((this.customerReference));
+      Dafny.ISequence<Dafny.Rune> _15_ref;
+      _15_ref = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Customer reference number: ");
+      Dafny.ISequence<Dafny.Rune> _16_name;
+      _16_name = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Customer name: ");
+      Dafny.ISequence<Dafny.Rune> _17_age;
+      _17_age = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Customer age: ");
+      Dafny.ISequence<Dafny.Rune> _18_acc;
+      _18_acc = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Customer account number: ");
+      Dafny.ISequence<Dafny.Rune> _19_sort;
+      _19_sort = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Customer sort code: ");
+      Dafny.ISequence<Dafny.Rune> _20_income;
+      _20_income = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Customer monthly income: £");
+      Dafny.ISequence<Dafny.Rune> _21_outgoings;
+      _21_outgoings = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Customer monthly expenditure: £");
+      Dafny.Helpers.Print((_15_ref).ToVerbatimString(false));
+      Dafny.Helpers.Print(((this).customerReference));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
-      Dafny.Helpers.Print((_18_name).ToVerbatimString(false));
+      Dafny.Helpers.Print((_16_name).ToVerbatimString(false));
       Dafny.Helpers.Print(((this).name).ToVerbatimString(false));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
-      Dafny.Helpers.Print((_19_age).ToVerbatimString(false));
+      Dafny.Helpers.Print((_17_age).ToVerbatimString(false));
       Dafny.Helpers.Print(((this).age));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
-      Dafny.Helpers.Print((_20_acc).ToVerbatimString(false));
+      Dafny.Helpers.Print((_18_acc).ToVerbatimString(false));
       Dafny.Helpers.Print(((this).accountNumber).ToVerbatimString(false));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
-      Dafny.Helpers.Print((_21_sort).ToVerbatimString(false));
+      Dafny.Helpers.Print((_19_sort).ToVerbatimString(false));
       Dafny.Helpers.Print(((this).sortCode).ToVerbatimString(false));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
-      Dafny.Helpers.Print((_22_income).ToVerbatimString(false));
+      Dafny.Helpers.Print((_20_income).ToVerbatimString(false));
       Dafny.Helpers.Print(((this).monthlyIncome));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
-      Dafny.Helpers.Print((_23_outgoings).ToVerbatimString(false));
+      Dafny.Helpers.Print((_21_outgoings).ToVerbatimString(false));
       Dafny.Helpers.Print(((this).monthlyOutgoings));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
     }
@@ -1229,30 +443,10 @@ namespace User {
     public Dafny.BigRational monthlyOutgoings { get {
       return this._monthlyOutgoings;
     } }
-    public User.Reference _referenceGenerator {get; set;}
-    public User.Reference referenceGenerator { get {
-      return this._referenceGenerator;
+    public BigInteger _customerReference {get; set;}
+    public BigInteger customerReference { get {
+      return this._customerReference;
     } }
-  }
-
-  public partial class Reference {
-    public Reference() {
-      this.reference = BigInteger.Zero;
-    }
-    public BigInteger reference {get; set;}
-    public void __ctor()
-    {
-      (this).reference = new BigInteger(1000000);
-    }
-    public BigInteger getReferenceNumber()
-    {
-      BigInteger @ref = BigInteger.Zero;
-      BigInteger _24_ref__old;
-      _24_ref__old = this.reference;
-      (this).reference = (this.reference) + (BigInteger.One);
-      @ref = _24_ref__old;
-      return @ref;
-    }
   }
 } // end of namespace User
 namespace BankSystem {
@@ -1265,6 +459,8 @@ namespace BankSystem {
       this.loans = Dafny.Set<Product.PersonalLoan>.Empty;
       this.customers = Dafny.Set<User.Customer>.Empty;
       this.customerLoans = Dafny.Map<BigInteger, BigInteger>.Empty;
+      this.nextCustomerReference = BigInteger.Zero;
+      this.nextLoanReference = BigInteger.Zero;
       this._referenceAgency = default(Support.CreditReferenceAgency);
     }
     public BigInteger capitalFundValue {get; set;}
@@ -1272,58 +468,66 @@ namespace BankSystem {
     public Dafny.ISet<Product.PersonalLoan> loans {get; set;}
     public Dafny.ISet<User.Customer> customers {get; set;}
     public Dafny.IMap<BigInteger,BigInteger> customerLoans {get; set;}
+    public BigInteger nextCustomerReference {get; set;}
+    public BigInteger nextLoanReference {get; set;}
     public void __ctor(BigInteger aValue, Support.CreditReferenceAgency aReferenceAgency)
     {
       (this).capitalFundValue = aValue;
       (this)._referenceAgency = aReferenceAgency;
+      (this).nextCustomerReference = new BigInteger(1000000);
+      (this).nextLoanReference = new BigInteger(1000000);
     }
     public void newApplication(Dafny.ISequence<Dafny.Rune> name, BigInteger age, Dafny.ISequence<Dafny.Rune> accountNumber, Dafny.ISequence<Dafny.Rune> sortCode, Dafny.BigRational monthlyIncome, Dafny.BigRational monthlyOutgoings, BigInteger requiredAmount, BigInteger repaymentPeriod)
     {
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("BEGINNING LOAN APPLICATION PROCESS"));
-      Dafny.BigRational _25_interest;
-      _25_interest = new Dafny.BigRational(BigInteger.Parse("0"), BigInteger.One);
+      Dafny.BigRational _22_interest;
+      _22_interest = new Dafny.BigRational(BigInteger.Parse("0"), BigInteger.One);
       if (((new BigInteger(5000)) <= (requiredAmount)) && ((requiredAmount) <= (new BigInteger(7499)))) {
-        _25_interest = new Dafny.BigRational(new BigInteger(136), BigInteger.Parse("10"));
+        _22_interest = new Dafny.BigRational(new BigInteger(136), BigInteger.Parse("10"));
       } else if (((new BigInteger(7500)) <= (requiredAmount)) && ((requiredAmount) <= (new BigInteger(10000)))) {
-        _25_interest = new Dafny.BigRational(new BigInteger(63), BigInteger.Parse("10"));
+        _22_interest = new Dafny.BigRational(new BigInteger(63), BigInteger.Parse("10"));
       } else {
         throw new System.Exception("unreachable alternative");
       }
-      Product.PersonalLoan _26_loan;
-      Product.PersonalLoan _nw2 = new Product.PersonalLoan();
-      _nw2.__ctor(requiredAmount, repaymentPeriod, _25_interest);
-      _26_loan = _nw2;
-      if ((_26_loan) == (object) ((Product.PersonalLoan)null)) {
+      BigInteger _23_ref;
+      BigInteger _out3;
+      _out3 = (this).getNextLoanReference();
+      _23_ref = _out3;
+      Product.PersonalLoan _24_loan;
+      Product.PersonalLoan _nw0 = new Product.PersonalLoan();
+      _nw0.__ctor(requiredAmount, repaymentPeriod, _22_interest, _23_ref);
+      _24_loan = _nw0;
+      if ((_24_loan) == (object) ((Product.PersonalLoan)null)) {
         (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("ERROR: UNABLE TO CREATE LOAN"));
       }
-      User.Customer _27_customer;
-      bool _28_applicationStatus;
-      User.Customer _out5;
-      bool _out6;
-      (this).registerApplication(name, age, accountNumber, sortCode, monthlyIncome, monthlyOutgoings, _26_loan, out _out5, out _out6);
-      _27_customer = _out5;
-      _28_applicationStatus = _out6;
-      if (!(_28_applicationStatus)) {
+      User.Customer _25_customer;
+      bool _26_applicationStatus;
+      User.Customer _out4;
+      bool _out5;
+      (this).registerApplication(name, age, accountNumber, sortCode, monthlyIncome, monthlyOutgoings, _24_loan, out _out4, out _out5);
+      _25_customer = _out4;
+      _26_applicationStatus = _out5;
+      if (!(_26_applicationStatus)) {
         (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("LOAN APPLICATION PROCESS COMPLETE"));
         return ;
       }
-      if ((_27_customer) == (object) ((User.Customer)null)) {
+      if ((_25_customer) == (object) ((User.Customer)null)) {
         (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("ERROR: UNABLE TO CREATE CUSTOMER"));
         return ;
       }
-      if (_28_applicationStatus) {
-        bool _out7;
-        _out7 = (this).processApplication(_27_customer, _26_loan);
-        _28_applicationStatus = _out7;
+      if (_26_applicationStatus) {
+        bool _out6;
+        _out6 = (this).processApplication(_25_customer, _24_loan);
+        _26_applicationStatus = _out6;
       }
-      if ((_28_applicationStatus) == (false)) {
-        (_26_loan).setStatus(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("rejected"));
-      } else if ((_28_applicationStatus) == (true)) {
-        (_26_loan).setStatus(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("approved"));
+      if ((_26_applicationStatus) == (false)) {
+        (_24_loan).setStatus(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("rejected"));
+      } else if ((_26_applicationStatus) == (true)) {
+        (_24_loan).setStatus(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("approved"));
       } else {
         throw new System.Exception("unreachable alternative");
       }
-      (this).completeApplication(_27_customer, _26_loan);
+      (this).completeApplication(_25_customer, _24_loan);
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("LOAN APPLICATION PROCESS COMPLETE"));
     }
     public void registerApplication(Dafny.ISequence<Dafny.Rune> name, BigInteger age, Dafny.ISequence<Dafny.Rune> accountNumber, Dafny.ISequence<Dafny.Rune> sortCode, Dafny.BigRational monthlyIncome, Dafny.BigRational monthlyOutgoings, Product.PersonalLoan aLoan, out User.Customer aCustomer, out bool isLoanRegistered)
@@ -1331,41 +535,41 @@ namespace BankSystem {
       aCustomer = ((User.Customer)null);
       isLoanRegistered = false;
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("BEGINNING APPLICATION REGISTRATION"));
-      bool _29_loanRegistered;
-      _29_loanRegistered = false;
-      User.Customer _30_customer;
-      User.Customer _out8;
-      _out8 = (this).registerCustomer(name, age, accountNumber, sortCode, monthlyIncome, monthlyOutgoings);
-      _30_customer = _out8;
-      if ((_30_customer) == (object) ((User.Customer)null)) {
-        User.Customer _rhs4 = _30_customer;
-        bool _rhs5 = _29_loanRegistered;
+      bool _27_loanRegistered;
+      _27_loanRegistered = false;
+      User.Customer _28_customer;
+      User.Customer _out7;
+      _out7 = (this).registerCustomer(name, age, accountNumber, sortCode, monthlyIncome, monthlyOutgoings);
+      _28_customer = _out7;
+      if ((_28_customer) == (object) ((User.Customer)null)) {
+        User.Customer _rhs4 = _28_customer;
+        bool _rhs5 = _27_loanRegistered;
         aCustomer = _rhs4;
         isLoanRegistered = _rhs5;
         return ;
       }
-      bool _out9;
-      _out9 = (this).registerLoan(aLoan);
-      _29_loanRegistered = _out9;
-      BigInteger _31_customerRef;
+      bool _out8;
+      _out8 = (this).registerLoan(aLoan);
+      _27_loanRegistered = _out8;
+      BigInteger _29_customerRef;
+      BigInteger _out9;
+      _out9 = (_28_customer).getCustomerReference();
+      _29_customerRef = _out9;
+      BigInteger _30_loanRef;
       BigInteger _out10;
-      _out10 = (_30_customer).getCustomerReference();
-      _31_customerRef = _out10;
-      BigInteger _32_loanRef;
-      BigInteger _out11;
-      _out11 = (aLoan).getLoanReference();
-      _32_loanRef = _out11;
-      (this).associateCustomerLoan(_32_loanRef, _31_customerRef);
-      Dafny.ISequence<Dafny.Rune> _33_message = Dafny.Sequence<Dafny.Rune>.Empty;
-      if (_29_loanRegistered) {
-        _33_message = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Your application has been recieved and will be processed");
+      _out10 = (aLoan).getLoanReference();
+      _30_loanRef = _out10;
+      (this).associateCustomerLoan(_30_loanRef, _29_customerRef);
+      Dafny.ISequence<Dafny.Rune> _31_message = Dafny.Sequence<Dafny.Rune>.Empty;
+      if (_27_loanRegistered) {
+        _31_message = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Your application has been recieved and will be processed");
       } else {
-        _33_message = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("We are sorry that your application cannot be processed at this time.");
+        _31_message = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("We are sorry that your application cannot be processed at this time.");
       }
-      (this).informCustomer(_30_customer, _33_message);
+      (this).informCustomer(_28_customer, _31_message);
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("APPLICATION REGISTRATION COMPLETE"));
-      User.Customer _rhs6 = _30_customer;
-      bool _rhs7 = _29_loanRegistered;
+      User.Customer _rhs6 = _28_customer;
+      bool _rhs7 = _27_loanRegistered;
       aCustomer = _rhs6;
       isLoanRegistered = _rhs7;
       return ;
@@ -1374,50 +578,54 @@ namespace BankSystem {
     {
       User.Customer newCustomer = ((User.Customer)null);
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("BEGINNING CUSTOMER REGISTRATION"));
-      User.Customer _34_aCustomer;
-      User.Customer _nw3 = new User.Customer();
-      _nw3.__ctor(name, age, accountNumber, sortCode, monthlyIncome, monthlyOutgoings);
-      _34_aCustomer = _nw3;
-      if ((_34_aCustomer) == (object) ((User.Customer)null)) {
-        newCustomer = _34_aCustomer;
+      BigInteger _32_ref;
+      BigInteger _out11;
+      _out11 = (this).getNextCustomerReference();
+      _32_ref = _out11;
+      User.Customer _33_aCustomer;
+      User.Customer _nw1 = new User.Customer();
+      _nw1.__ctor(name, age, accountNumber, sortCode, monthlyIncome, monthlyOutgoings, _32_ref);
+      _33_aCustomer = _nw1;
+      if ((_33_aCustomer) == (object) ((User.Customer)null)) {
+        newCustomer = _33_aCustomer;
         return newCustomer;
       }
-      (this).addCustomer(_34_aCustomer);
-      (_34_aCustomer).printCustomerDetails();
+      (this).addCustomer(_33_aCustomer);
+      (_33_aCustomer).printCustomerDetails();
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("CUSTOMER REGISTRATION COMPLETE"));
-      newCustomer = _34_aCustomer;
+      newCustomer = _33_aCustomer;
       return newCustomer;
     }
     public bool registerLoan(Product.PersonalLoan aLoan)
     {
       bool success = false;
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("BEGINNING LOAN REGISTRATION"));
-      bool _35_verified;
-      _35_verified = false;
-      BigInteger _36_loanAmount;
+      bool _34_verified;
+      _34_verified = false;
+      BigInteger _35_loanAmount;
       BigInteger _out12;
       _out12 = (aLoan).getRequiredAmount();
-      _36_loanAmount = _out12;
+      _35_loanAmount = _out12;
       bool _out13;
-      _out13 = (this).verifyCapitalAmount(this.capitalFundValue, (this).capitalFundMinimumThreshold, _36_loanAmount);
-      _35_verified = _out13;
-      if (_35_verified) {
+      _out13 = (this).verifyCapitalAmount(this.capitalFundValue, (this).capitalFundMinimumThreshold, _35_loanAmount);
+      _34_verified = _out13;
+      if (_34_verified) {
         (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("CAPITAL FUND VERIFICATION PASSED"));
         bool _out14;
         _out14 = (this).reserveLoanFunds(aLoan);
-        _35_verified = _out14;
+        _34_verified = _out14;
       } else {
         (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("CAPITAL FUND VERIFICATION FAILED"));
       }
-      if (_35_verified) {
+      if (_34_verified) {
         (this).addLoan(aLoan);
       }
-      if (!(_35_verified)) {
+      if (!(_34_verified)) {
         (aLoan).setStatus(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("rejected"));
       }
       (aLoan).printLoanDetails();
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("LOAN REGISTRATION COMPLETE"));
-      success = _35_verified;
+      success = _34_verified;
       return success;
     }
     public void associateCustomerLoan(BigInteger loanReferenceNumber, BigInteger customerReferenceNumber)
@@ -1428,65 +636,65 @@ namespace BankSystem {
     {
       bool isSuccessful = false;
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("BEGINNING PROCESSING APPLICATION"));
-      bool _37_verified;
-      _37_verified = false;
-      BigInteger _38_customerAge;
+      bool _36_verified;
+      _36_verified = false;
+      BigInteger _37_customerAge;
       BigInteger _out15;
       _out15 = (aCustomer).getAge();
-      _38_customerAge = _out15;
+      _37_customerAge = _out15;
       bool _out16;
-      _out16 = (aLoan).verifyAgeCriteria(_38_customerAge);
-      _37_verified = _out16;
-      if (!(_37_verified)) {
+      _out16 = (aLoan).verifyAgeCriteria(_37_customerAge);
+      _36_verified = _out16;
+      if (!(_36_verified)) {
         (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("AGE CRITERIA VERIFICATION FAILED"));
-        Dafny.ISequence<Dafny.Rune> _39_message;
-        _39_message = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Your application has failed the loan age criteria process");
-        (this).informCustomer(aCustomer, _39_message);
-        isSuccessful = _37_verified;
+        Dafny.ISequence<Dafny.Rune> _38_message;
+        _38_message = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Your application has failed the loan age criteria process");
+        (this).informCustomer(aCustomer, _38_message);
+        isSuccessful = _36_verified;
         return isSuccessful;
       } else {
         (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("AGE CRITERIA VERIFICATION PASSED"));
       }
-      Dafny.BigRational _40_customerMonthlyIncome;
+      Dafny.BigRational _39_customerMonthlyIncome;
       Dafny.BigRational _out17;
       _out17 = (aCustomer).getMonthlyIncome();
-      _40_customerMonthlyIncome = _out17;
-      Dafny.BigRational _41_customerMonthlyOutgoings;
+      _39_customerMonthlyIncome = _out17;
+      Dafny.BigRational _40_customerMonthlyOutgoings;
       Dafny.BigRational _out18;
       _out18 = (aCustomer).getMonthlyOutgoings();
-      _41_customerMonthlyOutgoings = _out18;
+      _40_customerMonthlyOutgoings = _out18;
       bool _out19;
-      _out19 = (aLoan).verifyIncomeCriteria(_40_customerMonthlyIncome, _41_customerMonthlyOutgoings);
-      _37_verified = _out19;
-      if (!(_37_verified)) {
+      _out19 = (aLoan).verifyIncomeCriteria(_39_customerMonthlyIncome, _40_customerMonthlyOutgoings);
+      _36_verified = _out19;
+      if (!(_36_verified)) {
         (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("INCOME CRITERIA VERIFICATION FAILED"));
-        Dafny.ISequence<Dafny.Rune> _42_message;
-        _42_message = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Your application has failed the loan income criteria process");
-        (this).informCustomer(aCustomer, _42_message);
-        isSuccessful = _37_verified;
+        Dafny.ISequence<Dafny.Rune> _41_message;
+        _41_message = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Your application has failed the loan income criteria process");
+        (this).informCustomer(aCustomer, _41_message);
+        isSuccessful = _36_verified;
         return isSuccessful;
       } else {
         (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("AGE CRITERIA VERIFICATION PASSED"));
       }
-      BigInteger _43_customerCreditScore;
+      BigInteger _42_customerCreditScore;
       BigInteger _out20;
       _out20 = (this).obtainCustomerCreditScore((this).referenceAgency, aCustomer);
-      _43_customerCreditScore = _out20;
+      _42_customerCreditScore = _out20;
       bool _out21;
-      _out21 = (aLoan).verifyCreditScore(_43_customerCreditScore);
-      _37_verified = _out21;
-      if (!(_37_verified)) {
+      _out21 = (aLoan).verifyCreditScore(_42_customerCreditScore);
+      _36_verified = _out21;
+      if (!(_36_verified)) {
         (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("CREDIT SCORE CRITERIA VERIFICATION FAILED"));
-        Dafny.ISequence<Dafny.Rune> _44_message;
-        _44_message = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Your application has failed the credit score criteria process");
-        (this).informCustomer(aCustomer, _44_message);
-        isSuccessful = _37_verified;
+        Dafny.ISequence<Dafny.Rune> _43_message;
+        _43_message = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Your application has failed the credit score criteria process");
+        (this).informCustomer(aCustomer, _43_message);
+        isSuccessful = _36_verified;
         return isSuccessful;
       } else {
         (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("CREDIT SCORE CRITERIA VERIFICATION PASSED"));
       }
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("PROCESSING APPLICATION COMPLETE"));
-      isSuccessful = _37_verified;
+      isSuccessful = _36_verified;
       return isSuccessful;
     }
     public void addLoan(Product.PersonalLoan aLoan)
@@ -1499,35 +707,35 @@ namespace BankSystem {
     }
     public void informCustomer(User.Customer aCustomer, Dafny.ISequence<Dafny.Rune> message)
     {
-      Dafny.ISequence<Dafny.Rune> _45_customerName;
+      Dafny.ISequence<Dafny.Rune> _44_customerName;
       Dafny.ISequence<Dafny.Rune> _out22;
       _out22 = (aCustomer).getName();
-      _45_customerName = _out22;
-      Dafny.ISequence<Dafny.Rune> _46_customerMessage;
-      _46_customerMessage = Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Customer Message: "), _45_customerName), Dafny.Sequence<Dafny.Rune>.UnicodeFromString(" :: ")), message);
+      _44_customerName = _out22;
+      Dafny.ISequence<Dafny.Rune> _45_customerMessage;
+      _45_customerMessage = Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Customer Message: "), _44_customerName), Dafny.Sequence<Dafny.Rune>.UnicodeFromString(" :: ")), message);
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
-      Dafny.Helpers.Print((_46_customerMessage).ToVerbatimString(false));
+      Dafny.Helpers.Print((_45_customerMessage).ToVerbatimString(false));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n\n")).ToVerbatimString(false));
     }
     public BigInteger obtainCustomerCreditScore(Support.CreditReferenceAgency referenceAgency, User.Customer aCustomer)
     {
       BigInteger score = BigInteger.Zero;
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("CUSTOMER CREDIT SCORE REQUESTED"));
-      Dafny.ISequence<Dafny.Rune> _47_customerName;
+      Dafny.ISequence<Dafny.Rune> _46_customerName;
       Dafny.ISequence<Dafny.Rune> _out23;
       _out23 = (aCustomer).getName();
-      _47_customerName = _out23;
-      BigInteger _48_aScore;
+      _46_customerName = _out23;
+      BigInteger _47_aScore;
       BigInteger _out24;
-      _out24 = (referenceAgency).getCreditScore(_47_customerName);
-      _48_aScore = _out24;
+      _out24 = (referenceAgency).getCreditScore(_46_customerName);
+      _47_aScore = _out24;
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("CUSTOMER CREDIT SCORE OBTAINED"));
-      Dafny.ISequence<Dafny.Rune> _49_scoreMessage;
-      _49_scoreMessage = Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Customer credit score: "), _47_customerName), Dafny.Sequence<Dafny.Rune>.UnicodeFromString(": "));
-      Dafny.Helpers.Print((_49_scoreMessage).ToVerbatimString(false));
-      Dafny.Helpers.Print((_48_aScore));
+      Dafny.ISequence<Dafny.Rune> _48_scoreMessage;
+      _48_scoreMessage = Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Customer credit score: "), _46_customerName), Dafny.Sequence<Dafny.Rune>.UnicodeFromString(": "));
+      Dafny.Helpers.Print((_48_scoreMessage).ToVerbatimString(false));
+      Dafny.Helpers.Print((_47_aScore));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
-      score = _48_aScore;
+      score = _47_aScore;
       return score;
     }
     public bool verifyCapitalAmount(BigInteger fundValue, BigInteger fundMinimum, BigInteger loanAmount)
@@ -1540,136 +748,156 @@ namespace BankSystem {
     public bool reserveLoanFunds(Product.PersonalLoan theLoan)
     {
       bool success = false;
-      BigInteger _50_loanAmount;
+      (this).printFundValues();
+      BigInteger _49_loanAmount;
       BigInteger _out25;
       _out25 = (theLoan).getRequiredAmount();
-      _50_loanAmount = _out25;
-      BigInteger _51_startingCapitalfund;
-      _51_startingCapitalfund = this.capitalFundValue;
-      BigInteger _52_startingReserveFund;
-      _52_startingReserveFund = this.reservedFunds;
-      (this).capitalFundValue = (this.capitalFundValue) - (_50_loanAmount);
-      (this).reservedFunds = (this.reservedFunds) + (_50_loanAmount);
-      BigInteger _53_finishingCapitalFund;
-      _53_finishingCapitalFund = this.capitalFundValue;
-      BigInteger _54_finishingReservedFund;
-      _54_finishingReservedFund = this.reservedFunds;
-      bool _55_both;
-      _55_both = ((_53_finishingCapitalFund) == ((_51_startingCapitalfund) - (_50_loanAmount))) && ((_54_finishingReservedFund) == ((_52_startingReserveFund) + (_50_loanAmount)));
+      _49_loanAmount = _out25;
+      BigInteger _50_startingCapitalfund;
+      _50_startingCapitalfund = this.capitalFundValue;
+      BigInteger _51_startingReserveFund;
+      _51_startingReserveFund = this.reservedFunds;
+      (this).capitalFundValue = (this.capitalFundValue) - (_49_loanAmount);
+      (this).reservedFunds = (this.reservedFunds) + (_49_loanAmount);
+      BigInteger _52_finishingCapitalFund;
+      _52_finishingCapitalFund = this.capitalFundValue;
+      BigInteger _53_finishingReservedFund;
+      _53_finishingReservedFund = this.reservedFunds;
+      bool _54_both;
+      _54_both = ((_52_finishingCapitalFund) == ((_50_startingCapitalfund) - (_49_loanAmount))) && ((_53_finishingReservedFund) == ((_51_startingReserveFund) + (_49_loanAmount)));
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("LOAN FUNDS RESERVED"));
       (this).printFundValues();
-      success = _55_both;
+      success = _54_both;
       return success;
     }
     public void completeApplication(User.Customer theCustomer, Product.PersonalLoan theLoan)
     {
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("BEGINNING APPLICATION COMPLETION PROCESS"));
-      Dafny.ISequence<Dafny.Rune> _56_loanStatus;
+      (theLoan).printLoanDetails();
+      Dafny.ISequence<Dafny.Rune> _55_loanStatus;
       Dafny.ISequence<Dafny.Rune> _out26;
       _out26 = (theLoan).getStatus();
-      _56_loanStatus = _out26;
-      if ((_56_loanStatus).Equals(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("rejected"))) {
-        Dafny.ISequence<Dafny.Rune> _57_message1;
-        _57_message1 = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("We are sorry that your application cannot be processed at this time.");
-        bool _58_fundsReleased;
+      _55_loanStatus = _out26;
+      if ((_55_loanStatus).Equals(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("rejected"))) {
+        Dafny.ISequence<Dafny.Rune> _56_message1;
+        _56_message1 = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("We are sorry that your application cannot be processed at this time.");
+        bool _57_fundsReleased;
         bool _out27;
         _out27 = (this).releaseLoanFunds(theLoan);
-        _58_fundsReleased = _out27;
-        if (_58_fundsReleased) {
-          Dafny.ISequence<Dafny.Rune> _59_message2;
-          _59_message2 = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("LOAN FUNDS RELEASED");
-          (this).logEvent(_59_message2);
-          (this).informCustomer(theCustomer, _57_message1);
+        _57_fundsReleased = _out27;
+        if (_57_fundsReleased) {
+          Dafny.ISequence<Dafny.Rune> _58_message2;
+          _58_message2 = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("LOAN FUNDS RELEASED");
+          (this).logEvent(_58_message2);
+          (this).informCustomer(theCustomer, _56_message1);
         }
       }
-      if ((_56_loanStatus).Equals(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("approved"))) {
-        bool _60_success;
+      if ((_55_loanStatus).Equals(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("approved"))) {
+        bool _59_success;
         bool _out28;
         _out28 = (this).transferLoanToCustomer(theLoan, theCustomer);
-        _60_success = _out28;
-        Dafny.ISequence<Dafny.Rune> _61_accNo;
-        Dafny.ISequence<Dafny.Rune> _62_sortCode;
+        _59_success = _out28;
+        Dafny.ISequence<Dafny.Rune> _60_accNo;
+        Dafny.ISequence<Dafny.Rune> _61_sortCode;
         Dafny.ISequence<Dafny.Rune> _out29;
         Dafny.ISequence<Dafny.Rune> _out30;
         (theCustomer).getPaymentDetails(out _out29, out _out30);
-        _61_accNo = _out29;
-        _62_sortCode = _out30;
-        Dafny.ISequence<Dafny.Rune> _63_message;
-        _63_message = Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Your application has been successful. The required loan amount will be transferred to account number: "), _61_accNo), Dafny.Sequence<Dafny.Rune>.UnicodeFromString(" sort code: ")), _62_sortCode);
-        (this).informCustomer(theCustomer, _63_message);
+        _60_accNo = _out29;
+        _61_sortCode = _out30;
+        Dafny.ISequence<Dafny.Rune> _62_message;
+        _62_message = Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Your application has been successful. The required loan amount will be transferred to account number: "), _60_accNo), Dafny.Sequence<Dafny.Rune>.UnicodeFromString(" sort code: ")), _61_sortCode);
+        (this).informCustomer(theCustomer, _62_message);
       }
     }
     public bool releaseLoanFunds(Product.PersonalLoan theLoan)
     {
       bool success = false;
-      BigInteger _64_loanAmount;
+      BigInteger _63_loanAmount;
       BigInteger _out31;
       _out31 = (theLoan).getRequiredAmount();
-      _64_loanAmount = _out31;
-      BigInteger _65_startingCapitalfund;
-      _65_startingCapitalfund = this.capitalFundValue;
-      BigInteger _66_startingReserveFund;
-      _66_startingReserveFund = this.reservedFunds;
-      (this).capitalFundValue = (this.capitalFundValue) + (_64_loanAmount);
-      (this).reservedFunds = (this.reservedFunds) - (_64_loanAmount);
-      BigInteger _67_finishingCapitalFund;
-      _67_finishingCapitalFund = this.capitalFundValue;
-      BigInteger _68_finishingReservedFund;
-      _68_finishingReservedFund = this.reservedFunds;
-      bool _69_both;
-      _69_both = ((_67_finishingCapitalFund) == ((_65_startingCapitalfund) + (_64_loanAmount))) && ((_68_finishingReservedFund) == ((_66_startingReserveFund) - (_64_loanAmount)));
+      _63_loanAmount = _out31;
+      BigInteger _64_startingCapitalfund;
+      _64_startingCapitalfund = this.capitalFundValue;
+      BigInteger _65_startingReserveFund;
+      _65_startingReserveFund = this.reservedFunds;
+      (this).capitalFundValue = (this.capitalFundValue) + (_63_loanAmount);
+      (this).reservedFunds = (this.reservedFunds) - (_63_loanAmount);
+      BigInteger _66_finishingCapitalFund;
+      _66_finishingCapitalFund = this.capitalFundValue;
+      BigInteger _67_finishingReservedFund;
+      _67_finishingReservedFund = this.reservedFunds;
+      bool _68_both;
+      _68_both = ((_66_finishingCapitalFund) == ((_64_startingCapitalfund) + (_63_loanAmount))) && ((_67_finishingReservedFund) == ((_65_startingReserveFund) - (_63_loanAmount)));
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("RESERVED LOAN FUNDS RELEASED"));
       (this).printFundValues();
-      success = _69_both;
+      success = _68_both;
       return success;
     }
     public bool transferLoanToCustomer(Product.PersonalLoan theLoan, User.Customer theCustomer)
     {
       bool success = false;
-      Dafny.ISequence<Dafny.Rune> _70_accNo;
-      Dafny.ISequence<Dafny.Rune> _71_sortCode;
+      Dafny.ISequence<Dafny.Rune> _69_accNo;
+      Dafny.ISequence<Dafny.Rune> _70_sortCode;
       Dafny.ISequence<Dafny.Rune> _out32;
       Dafny.ISequence<Dafny.Rune> _out33;
       (theCustomer).getPaymentDetails(out _out32, out _out33);
-      _70_accNo = _out32;
-      _71_sortCode = _out33;
-      Dafny.ISequence<Dafny.Rune> _72_message;
-      _72_message = Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Transfer funds: account number:"), _70_accNo), Dafny.Sequence<Dafny.Rune>.UnicodeFromString(" sort code: ")), _71_sortCode);
-      BigInteger _73_loanAmount;
+      _69_accNo = _out32;
+      _70_sortCode = _out33;
+      Dafny.ISequence<Dafny.Rune> _71_message;
+      _71_message = Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Transfer funds: account number:"), _69_accNo), Dafny.Sequence<Dafny.Rune>.UnicodeFromString(" sort code: ")), _70_sortCode);
+      BigInteger _72_loanAmount;
       BigInteger _out34;
       _out34 = (theLoan).getRequiredAmount();
-      _73_loanAmount = _out34;
-      BigInteger _74_startingReserveFund;
-      _74_startingReserveFund = this.reservedFunds;
-      (this).reservedFunds = (this.reservedFunds) - (_73_loanAmount);
-      BigInteger _75_finishingReservedFund;
-      _75_finishingReservedFund = this.reservedFunds;
-      bool _76_transferred;
-      _76_transferred = (_75_finishingReservedFund) == ((_74_startingReserveFund) - (_73_loanAmount));
+      _72_loanAmount = _out34;
+      BigInteger _73_startingReserveFund;
+      _73_startingReserveFund = this.reservedFunds;
+      (this).reservedFunds = (this.reservedFunds) - (_72_loanAmount);
+      BigInteger _74_finishingReservedFund;
+      _74_finishingReservedFund = this.reservedFunds;
+      bool _75_transferred;
+      _75_transferred = (_74_finishingReservedFund) == ((_73_startingReserveFund) - (_72_loanAmount));
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("LOAN FUNDS TRANSFERRED"));
       (this).printFundValues();
-      success = _76_transferred;
+      success = _75_transferred;
       return success;
     }
     public void logEvent(Dafny.ISequence<Dafny.Rune> eventMessage)
     {
-      Dafny.ISequence<Dafny.Rune> _77_message;
-      _77_message = Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("System Log: Event :: "), eventMessage);
-      Dafny.Helpers.Print((_77_message).ToVerbatimString(false));
+      Dafny.ISequence<Dafny.Rune> _76_message;
+      _76_message = Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("System Log: Event :: "), eventMessage);
+      Dafny.Helpers.Print((_76_message).ToVerbatimString(false));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
     }
     public void printFundValues()
     {
-      Dafny.ISequence<Dafny.Rune> _78_cfv;
-      _78_cfv = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("CAPITAL FUND VALUE :: £");
-      Dafny.ISequence<Dafny.Rune> _79_rfv;
-      _79_rfv = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("RESERVED FUND VALUE :: £");
-      Dafny.Helpers.Print((_78_cfv).ToVerbatimString(false));
+      Dafny.ISequence<Dafny.Rune> _77_cfv;
+      _77_cfv = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("CAPITAL FUND VALUE :: £");
+      Dafny.ISequence<Dafny.Rune> _78_rfv;
+      _78_rfv = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("RESERVED FUND VALUE :: £");
+      Dafny.Helpers.Print((_77_cfv).ToVerbatimString(false));
       Dafny.Helpers.Print((this.capitalFundValue));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
-      Dafny.Helpers.Print((_79_rfv).ToVerbatimString(false));
+      Dafny.Helpers.Print((_78_rfv).ToVerbatimString(false));
       Dafny.Helpers.Print((this.reservedFunds));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
+    }
+    public BigInteger getNextLoanReference()
+    {
+      BigInteger @ref = BigInteger.Zero;
+      BigInteger _79_oldRef;
+      _79_oldRef = this.nextLoanReference;
+      (this).nextLoanReference = (this.nextLoanReference) + (BigInteger.One);
+      @ref = _79_oldRef;
+      return @ref;
+    }
+    public BigInteger getNextCustomerReference()
+    {
+      BigInteger @ref = BigInteger.Zero;
+      BigInteger _80_oldRef;
+      _80_oldRef = this.nextCustomerReference;
+      (this).nextCustomerReference = (this.nextCustomerReference) + (BigInteger.One);
+      @ref = _80_oldRef;
+      return @ref;
     }
     public Support.CreditReferenceAgency _referenceAgency {get; set;}
     public Support.CreditReferenceAgency referenceAgency { get {
