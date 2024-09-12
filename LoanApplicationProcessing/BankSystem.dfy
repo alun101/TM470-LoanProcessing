@@ -21,7 +21,7 @@ module {:extern "BankSystem"} BankSystem
     // instance constants
 
     const capitalFundMinimumThreshold: nat := 500_000
-    const referenceAgency: CreditReferenceAgency 
+    const referenceAgency: CreditReferenceAgency
     
     // instance variables
 
@@ -32,17 +32,31 @@ module {:extern "BankSystem"} BankSystem
     var customerLoans: map<nat, nat>
     var nextCustomerReference: nat
     var nextLoanReference: nat
+    var capitalMutexAcquired: bool
+    var capitalMutexOwner: PersonalLoan?
+    var reservedMutexAcquired: bool
+    var reservedMutexOwner: PersonalLoan?
     
     // constructor
 
     constructor(aValue: nat, aReferenceAgency: CreditReferenceAgency)
     ensures this.capitalFundValue == aValue
     ensures this.referenceAgency == aReferenceAgency
+    ensures this.nextCustomerReference == 1_000_000
+    ensures this.nextLoanReference == 1_000_000
+    ensures this.capitalMutexAcquired == false
+    ensures this.reservedMutexAcquired == false
+    ensures this.capitalMutexOwner == null
+    ensures this.reservedMutexOwner == null
     {
       this.capitalFundValue := aValue;
       this.referenceAgency := aReferenceAgency;
       this.nextCustomerReference := 1_000_000;
       this.nextLoanReference := 1_000_000;
+      this.capitalMutexAcquired := false;
+      this.reservedMutexAcquired := false;
+      this.capitalMutexOwner := null;
+      this.reservedMutexOwner := null;
     }
     
     // instance methods
@@ -52,13 +66,7 @@ module {:extern "BankSystem"} BankSystem
     requires requiredAmount in PersonalLoan.monthLoan24 || requiredAmount in PersonalLoan.monthLoan36 ||
              requiredAmount in PersonalLoan.monthLoan48 || requiredAmount in PersonalLoan.monthLoan60
     requires repaymentPeriod == 24 || repaymentPeriod == 36 || repaymentPeriod == 48 || repaymentPeriod == 60                    
-    modifies this`customers
-    modifies this`loans
-    modifies this`customerLoans
-    modifies this`capitalFundValue
-    modifies this`reservedFunds
-    modifies this`nextLoanReference
-    modifies this`nextCustomerReference
+    modifies this
     {
       logEvent("BEGINNING LOAN APPLICATION PROCESS");
       var interest: real := 0.0;
@@ -96,15 +104,10 @@ module {:extern "BankSystem"} BankSystem
 
     method registerApplication(name: string, age: nat, accountNumber: string, sortCode: string, monthlyIncome: real, monthlyOutgoings: real, 
                                aLoan: PersonalLoan) returns (aCustomer: Customer?, isLoanRegistered: bool)
-    modifies this`customers
-    modifies this`loans
-    modifies this`customerLoans
+    modifies this
     modifies aLoan`statusPending
     modifies aLoan`statusRejected
     modifies aLoan`statusApproved
-    modifies this`capitalFundValue
-    modifies this`reservedFunds
-    modifies this`nextCustomerReference
     {
       logEvent("BEGINNING APPLICATION REGISTRATION");
       var loanRegistered :bool := false;
@@ -140,14 +143,22 @@ module {:extern "BankSystem"} BankSystem
     }
     
     method registerLoan(aLoan: PersonalLoan) returns (success: bool)
-    modifies this`capitalFundValue
-    modifies this`reservedFunds
-    modifies this`loans
+    modifies this
     modifies aLoan`statusPending
     modifies aLoan`statusRejected
     modifies aLoan`statusApproved
     {
       logEvent("BEGINNING LOAN REGISTRATION");
+      var accessCapitalFund: bool := false;
+      var accessReservedFund: bool := false;
+      assume {:axiom} accessCapitalFund;
+      while (!accessCapitalFund) {
+        accessCapitalFund := this.requestCapitalAccess(aLoan);
+      }
+      assume {:axiom} accessReservedFund;
+      while (!accessReservedFund) {
+        accessReservedFund := this.requestReservedAccess(aLoan);
+      }
       var verified: bool := false;
       var loanAmount: nat := aLoan.getRequiredAmount();
       verified := this.verifyCapitalAmount(this.capitalFundValue, this.capitalFundMinimumThreshold, loanAmount); // verify capital fund
@@ -167,6 +178,8 @@ module {:extern "BankSystem"} BankSystem
       assume {:axiom} !(aLoan.statusPending == aLoan.statusRejected == aLoan.statusApproved);
       aLoan.printLoanDetails();
       logEvent("LOAN REGISTRATION COMPLETE");
+      releaseReservedAccess(aLoan);
+      releaseCapitalAccess(aLoan);
       return verified;
     }
 
@@ -283,6 +296,10 @@ module {:extern "BankSystem"} BankSystem
     requires !(theLoan.statusPending == theLoan.statusRejected == theLoan.statusApproved)
     modifies this`capitalFundValue
     modifies this`reservedFunds
+    modifies this`reservedMutexAcquired
+    modifies this`reservedMutexOwner
+    modifies this`capitalMutexAcquired
+    modifies this`capitalMutexOwner
     {
       logEvent("BEGINNING APPLICATION COMPLETION PROCESS");
       theLoan.printLoanDetails();
@@ -308,8 +325,22 @@ module {:extern "BankSystem"} BankSystem
     method releaseLoanFunds(theLoan: PersonalLoan) returns (success: bool)
     modifies this`capitalFundValue
     modifies this`reservedFunds
+    modifies this`capitalMutexAcquired
+    modifies this`capitalMutexOwner
+    modifies this`reservedMutexAcquired
+    modifies this`reservedMutexOwner
     ensures (this.capitalFundValue + this.reservedFunds) == (old(capitalFundValue) + old(reservedFunds))
     {
+      var accessCapitalFund: bool := false;
+      var accessReservedFund: bool := false;
+      assume {:axiom} accessCapitalFund;
+      while (!accessCapitalFund) {
+        accessCapitalFund := this.requestCapitalAccess(theLoan);
+      }
+      assume {:axiom} accessReservedFund;
+      while (!accessReservedFund) {
+        accessReservedFund := this.requestReservedAccess(theLoan);
+      }
       var loanAmount: nat := theLoan.getRequiredAmount();
       var startingCapitalfund: nat := this.capitalFundValue;
       var startingReserveFund: nat := this.reservedFunds;
@@ -322,13 +353,22 @@ module {:extern "BankSystem"} BankSystem
                         (finishingReservedFund == (startingReserveFund - loanAmount));
       logEvent("RESERVED LOAN FUNDS RELEASED");
       this.printFundValues();
+      this.releaseReservedAccess(theLoan);
+      this.releaseCapitalAccess(theLoan);
       return both;
     }
 
     method transferLoanToCustomer(theLoan: PersonalLoan, theCustomer: Customer) returns (success: bool)
     modifies this`reservedFunds
+    modifies this`reservedMutexAcquired
+    modifies this`reservedMutexOwner
     ensures ((this.reservedFunds + theLoan.requiredAmount) == old(reservedFunds))
     {
+      var access: bool := false; 
+      assume {:axiom} access;
+      while (!access) {
+        access := this.requestReservedAccess(theLoan);
+      }
       var accNo: string, sortCode: string := theCustomer.getPaymentDetails();
       var message: string := "Transfer funds: account number:" + accNo + " sort code: " + sortCode;
       var loanAmount: nat := theLoan.getRequiredAmount();
@@ -339,6 +379,7 @@ module {:extern "BankSystem"} BankSystem
       var transferred: bool := (finishingReservedFund == (startingReserveFund - loanAmount));
       logEvent("LOAN FUNDS TRANSFERRED");
       this.printFundValues();
+      this.releaseReservedAccess(theLoan);
       return transferred;
     }
 
@@ -374,6 +415,60 @@ module {:extern "BankSystem"} BankSystem
       var oldRef: nat := this.nextCustomerReference;
       this.nextCustomerReference := this.nextCustomerReference + 1;
       return oldRef;
+    }
+
+    method requestCapitalAccess(loan: PersonalLoan) returns (granted: bool)
+    modifies this`capitalMutexAcquired
+    modifies this`capitalMutexOwner
+    ensures granted == !(old(this.capitalMutexAcquired))
+    ensures !granted == old(this.capitalMutexAcquired)
+    {
+      if (!this.capitalMutexAcquired) {
+        this.capitalMutexAcquired := true;
+        this.capitalMutexOwner := loan;
+        logEvent("CAPITAL FUND MUTEX ACQUIRED");
+        return true;
+      } else {
+        return false;
+      }
+    }
+
+    method releaseCapitalAccess(loan: PersonalLoan?) returns ()
+    modifies this`capitalMutexAcquired
+    modifies this`capitalMutexOwner
+    {
+      if (this.capitalMutexAcquired && this.capitalMutexOwner == loan) {
+        this.capitalMutexOwner := null;
+        this.capitalMutexAcquired := false;
+        logEvent("CAPITAL FUND MUTEX RELEASED");
+      }
+    }
+
+    method requestReservedAccess(loan: PersonalLoan) returns (granted: bool)
+    modifies this`reservedMutexAcquired
+    modifies this`reservedMutexOwner
+    ensures granted == !(old(this.reservedMutexAcquired))
+    ensures !granted == old(this.reservedMutexAcquired)
+    {
+      if (!this.reservedMutexAcquired) {
+        this.reservedMutexAcquired := true;
+        this.reservedMutexOwner := loan;
+        logEvent("RESERVED FUND MUTEX ACQUIRED");
+        return true;
+      } else {
+        return false;
+      }
+    }
+
+    method releaseReservedAccess(loan: PersonalLoan?) returns ()
+    modifies this`reservedMutexAcquired
+    modifies this`reservedMutexOwner
+    {
+      if (this.reservedMutexAcquired && this.reservedMutexOwner == loan) {
+        this.reservedMutexOwner := null;
+        this.reservedMutexAcquired := false;
+        logEvent("RESERVED FUND MUTEX RELEASED");
+      }
     }
   }
 }

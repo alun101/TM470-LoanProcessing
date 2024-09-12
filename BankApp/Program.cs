@@ -155,7 +155,7 @@ class UserInterface
       // convert c# types to equivalent Dafny types
       // required for string -> ISequence<Rune>
       // required for float -> BigRational
-      // not required for int 
+      // not required for int -> BigInteger
       var dafnyName = Dafny.Sequence<Dafny.Rune>.UnicodeFromString(name);
       var dafnyAccNo = Dafny.Sequence<Dafny.Rune>.UnicodeFromString(accNo);
       var dafnySortCode = Dafny.Sequence<Dafny.Rune>.UnicodeFromString(sortCode);
@@ -168,4 +168,3 @@ class UserInterface
     }
   }
 }
-

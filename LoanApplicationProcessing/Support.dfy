@@ -30,7 +30,7 @@ module {:extern "Support"} Support
     requires CreditReferenceAgency.creditScoreMin <= creditScoreSetup <= CreditReferenceAgency.creditScoreMax
     modifies this`creditScores
     ensures name in creditScores
-    ensures CreditReferenceAgency.creditScoreMin <= creditScores[name] <= CreditReferenceAgency.creditScoreMax 
+    ensures CreditReferenceAgency.creditScoreMin <= creditScores[name] <= CreditReferenceAgency.creditScoreMax
     {
       this.creditScores := map[name := creditScoreSetup];
     }

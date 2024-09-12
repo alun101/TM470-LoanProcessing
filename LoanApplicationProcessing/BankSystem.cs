@@ -461,6 +461,10 @@ namespace BankSystem {
       this.customerLoans = Dafny.Map<BigInteger, BigInteger>.Empty;
       this.nextCustomerReference = BigInteger.Zero;
       this.nextLoanReference = BigInteger.Zero;
+      this.capitalMutexAcquired = false;
+      this.capitalMutexOwner = ((Product.PersonalLoan)null);
+      this.reservedMutexAcquired = false;
+      this.reservedMutexOwner = ((Product.PersonalLoan)null);
       this._referenceAgency = default(Support.CreditReferenceAgency);
     }
     public BigInteger capitalFundValue {get; set;}
@@ -470,12 +474,20 @@ namespace BankSystem {
     public Dafny.IMap<BigInteger,BigInteger> customerLoans {get; set;}
     public BigInteger nextCustomerReference {get; set;}
     public BigInteger nextLoanReference {get; set;}
+    public bool capitalMutexAcquired {get; set;}
+    public Product.PersonalLoan capitalMutexOwner {get; set;}
+    public bool reservedMutexAcquired {get; set;}
+    public Product.PersonalLoan reservedMutexOwner {get; set;}
     public void __ctor(BigInteger aValue, Support.CreditReferenceAgency aReferenceAgency)
     {
       (this).capitalFundValue = aValue;
       (this)._referenceAgency = aReferenceAgency;
       (this).nextCustomerReference = new BigInteger(1000000);
       (this).nextLoanReference = new BigInteger(1000000);
+      (this).capitalMutexAcquired = false;
+      (this).reservedMutexAcquired = false;
+      (this).capitalMutexOwner = (Product.PersonalLoan)null;
+      (this).reservedMutexOwner = (Product.PersonalLoan)null;
     }
     public void newApplication(Dafny.ISequence<Dafny.Rune> name, BigInteger age, Dafny.ISequence<Dafny.Rune> accountNumber, Dafny.ISequence<Dafny.Rune> sortCode, Dafny.BigRational monthlyIncome, Dafny.BigRational monthlyOutgoings, BigInteger requiredAmount, BigInteger repaymentPeriod)
     {
@@ -600,32 +612,48 @@ namespace BankSystem {
     {
       bool success = false;
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("BEGINNING LOAN REGISTRATION"));
-      bool _34_verified;
-      _34_verified = false;
-      BigInteger _35_loanAmount;
-      BigInteger _out12;
-      _out12 = (aLoan).getRequiredAmount();
-      _35_loanAmount = _out12;
-      bool _out13;
-      _out13 = (this).verifyCapitalAmount(this.capitalFundValue, (this).capitalFundMinimumThreshold, _35_loanAmount);
-      _34_verified = _out13;
-      if (_34_verified) {
+      bool _34_accessCapitalFund;
+      _34_accessCapitalFund = false;
+      bool _35_accessReservedFund;
+      _35_accessReservedFund = false;
+      while (!(_34_accessCapitalFund)) {
+        bool _out12;
+        _out12 = (this).requestCapitalAccess(aLoan);
+        _34_accessCapitalFund = _out12;
+      }
+      while (!(_35_accessReservedFund)) {
+        bool _out13;
+        _out13 = (this).requestReservedAccess(aLoan);
+        _35_accessReservedFund = _out13;
+      }
+      bool _36_verified;
+      _36_verified = false;
+      BigInteger _37_loanAmount;
+      BigInteger _out14;
+      _out14 = (aLoan).getRequiredAmount();
+      _37_loanAmount = _out14;
+      bool _out15;
+      _out15 = (this).verifyCapitalAmount(this.capitalFundValue, (this).capitalFundMinimumThreshold, _37_loanAmount);
+      _36_verified = _out15;
+      if (_36_verified) {
         (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("CAPITAL FUND VERIFICATION PASSED"));
-        bool _out14;
-        _out14 = (this).reserveLoanFunds(aLoan);
-        _34_verified = _out14;
+        bool _out16;
+        _out16 = (this).reserveLoanFunds(aLoan);
+        _36_verified = _out16;
       } else {
         (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("CAPITAL FUND VERIFICATION FAILED"));
       }
-      if (_34_verified) {
+      if (_36_verified) {
         (this).addLoan(aLoan);
       }
-      if (!(_34_verified)) {
+      if (!(_36_verified)) {
         (aLoan).setStatus(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("rejected"));
       }
       (aLoan).printLoanDetails();
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("LOAN REGISTRATION COMPLETE"));
-      success = _34_verified;
+      (this).releaseReservedAccess(aLoan);
+      (this).releaseCapitalAccess(aLoan);
+      success = _36_verified;
       return success;
     }
     public void associateCustomerLoan(BigInteger loanReferenceNumber, BigInteger customerReferenceNumber)
@@ -636,65 +664,65 @@ namespace BankSystem {
     {
       bool isSuccessful = false;
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("BEGINNING PROCESSING APPLICATION"));
-      bool _36_verified;
-      _36_verified = false;
-      BigInteger _37_customerAge;
-      BigInteger _out15;
-      _out15 = (aCustomer).getAge();
-      _37_customerAge = _out15;
-      bool _out16;
-      _out16 = (aLoan).verifyAgeCriteria(_37_customerAge);
-      _36_verified = _out16;
-      if (!(_36_verified)) {
+      bool _38_verified;
+      _38_verified = false;
+      BigInteger _39_customerAge;
+      BigInteger _out17;
+      _out17 = (aCustomer).getAge();
+      _39_customerAge = _out17;
+      bool _out18;
+      _out18 = (aLoan).verifyAgeCriteria(_39_customerAge);
+      _38_verified = _out18;
+      if (!(_38_verified)) {
         (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("AGE CRITERIA VERIFICATION FAILED"));
-        Dafny.ISequence<Dafny.Rune> _38_message;
-        _38_message = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Your application has failed the loan age criteria process");
-        (this).informCustomer(aCustomer, _38_message);
-        isSuccessful = _36_verified;
+        Dafny.ISequence<Dafny.Rune> _40_message;
+        _40_message = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Your application has failed the loan age criteria process");
+        (this).informCustomer(aCustomer, _40_message);
+        isSuccessful = _38_verified;
         return isSuccessful;
       } else {
         (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("AGE CRITERIA VERIFICATION PASSED"));
       }
-      Dafny.BigRational _39_customerMonthlyIncome;
-      Dafny.BigRational _out17;
-      _out17 = (aCustomer).getMonthlyIncome();
-      _39_customerMonthlyIncome = _out17;
-      Dafny.BigRational _40_customerMonthlyOutgoings;
-      Dafny.BigRational _out18;
-      _out18 = (aCustomer).getMonthlyOutgoings();
-      _40_customerMonthlyOutgoings = _out18;
-      bool _out19;
-      _out19 = (aLoan).verifyIncomeCriteria(_39_customerMonthlyIncome, _40_customerMonthlyOutgoings);
-      _36_verified = _out19;
-      if (!(_36_verified)) {
-        (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("INCOME CRITERIA VERIFICATION FAILED"));
-        Dafny.ISequence<Dafny.Rune> _41_message;
-        _41_message = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Your application has failed the loan income criteria process");
-        (this).informCustomer(aCustomer, _41_message);
-        isSuccessful = _36_verified;
-        return isSuccessful;
-      } else {
-        (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("AGE CRITERIA VERIFICATION PASSED"));
-      }
-      BigInteger _42_customerCreditScore;
-      BigInteger _out20;
-      _out20 = (this).obtainCustomerCreditScore((this).referenceAgency, aCustomer);
-      _42_customerCreditScore = _out20;
+      Dafny.BigRational _41_customerMonthlyIncome;
+      Dafny.BigRational _out19;
+      _out19 = (aCustomer).getMonthlyIncome();
+      _41_customerMonthlyIncome = _out19;
+      Dafny.BigRational _42_customerMonthlyOutgoings;
+      Dafny.BigRational _out20;
+      _out20 = (aCustomer).getMonthlyOutgoings();
+      _42_customerMonthlyOutgoings = _out20;
       bool _out21;
-      _out21 = (aLoan).verifyCreditScore(_42_customerCreditScore);
-      _36_verified = _out21;
-      if (!(_36_verified)) {
-        (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("CREDIT SCORE CRITERIA VERIFICATION FAILED"));
+      _out21 = (aLoan).verifyIncomeCriteria(_41_customerMonthlyIncome, _42_customerMonthlyOutgoings);
+      _38_verified = _out21;
+      if (!(_38_verified)) {
+        (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("INCOME CRITERIA VERIFICATION FAILED"));
         Dafny.ISequence<Dafny.Rune> _43_message;
-        _43_message = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Your application has failed the credit score criteria process");
+        _43_message = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Your application has failed the loan income criteria process");
         (this).informCustomer(aCustomer, _43_message);
-        isSuccessful = _36_verified;
+        isSuccessful = _38_verified;
+        return isSuccessful;
+      } else {
+        (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("AGE CRITERIA VERIFICATION PASSED"));
+      }
+      BigInteger _44_customerCreditScore;
+      BigInteger _out22;
+      _out22 = (this).obtainCustomerCreditScore((this).referenceAgency, aCustomer);
+      _44_customerCreditScore = _out22;
+      bool _out23;
+      _out23 = (aLoan).verifyCreditScore(_44_customerCreditScore);
+      _38_verified = _out23;
+      if (!(_38_verified)) {
+        (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("CREDIT SCORE CRITERIA VERIFICATION FAILED"));
+        Dafny.ISequence<Dafny.Rune> _45_message;
+        _45_message = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Your application has failed the credit score criteria process");
+        (this).informCustomer(aCustomer, _45_message);
+        isSuccessful = _38_verified;
         return isSuccessful;
       } else {
         (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("CREDIT SCORE CRITERIA VERIFICATION PASSED"));
       }
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("PROCESSING APPLICATION COMPLETE"));
-      isSuccessful = _36_verified;
+      isSuccessful = _38_verified;
       return isSuccessful;
     }
     public void addLoan(Product.PersonalLoan aLoan)
@@ -707,35 +735,35 @@ namespace BankSystem {
     }
     public void informCustomer(User.Customer aCustomer, Dafny.ISequence<Dafny.Rune> message)
     {
-      Dafny.ISequence<Dafny.Rune> _44_customerName;
-      Dafny.ISequence<Dafny.Rune> _out22;
-      _out22 = (aCustomer).getName();
-      _44_customerName = _out22;
-      Dafny.ISequence<Dafny.Rune> _45_customerMessage;
-      _45_customerMessage = Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Customer Message: "), _44_customerName), Dafny.Sequence<Dafny.Rune>.UnicodeFromString(" :: ")), message);
+      Dafny.ISequence<Dafny.Rune> _46_customerName;
+      Dafny.ISequence<Dafny.Rune> _out24;
+      _out24 = (aCustomer).getName();
+      _46_customerName = _out24;
+      Dafny.ISequence<Dafny.Rune> _47_customerMessage;
+      _47_customerMessage = Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Customer Message: "), _46_customerName), Dafny.Sequence<Dafny.Rune>.UnicodeFromString(" :: ")), message);
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
-      Dafny.Helpers.Print((_45_customerMessage).ToVerbatimString(false));
+      Dafny.Helpers.Print((_47_customerMessage).ToVerbatimString(false));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n\n")).ToVerbatimString(false));
     }
     public BigInteger obtainCustomerCreditScore(Support.CreditReferenceAgency referenceAgency, User.Customer aCustomer)
     {
       BigInteger score = BigInteger.Zero;
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("CUSTOMER CREDIT SCORE REQUESTED"));
-      Dafny.ISequence<Dafny.Rune> _46_customerName;
-      Dafny.ISequence<Dafny.Rune> _out23;
-      _out23 = (aCustomer).getName();
-      _46_customerName = _out23;
-      BigInteger _47_aScore;
-      BigInteger _out24;
-      _out24 = (referenceAgency).getCreditScore(_46_customerName);
-      _47_aScore = _out24;
+      Dafny.ISequence<Dafny.Rune> _48_customerName;
+      Dafny.ISequence<Dafny.Rune> _out25;
+      _out25 = (aCustomer).getName();
+      _48_customerName = _out25;
+      BigInteger _49_aScore;
+      BigInteger _out26;
+      _out26 = (referenceAgency).getCreditScore(_48_customerName);
+      _49_aScore = _out26;
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("CUSTOMER CREDIT SCORE OBTAINED"));
-      Dafny.ISequence<Dafny.Rune> _48_scoreMessage;
-      _48_scoreMessage = Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Customer credit score: "), _46_customerName), Dafny.Sequence<Dafny.Rune>.UnicodeFromString(": "));
-      Dafny.Helpers.Print((_48_scoreMessage).ToVerbatimString(false));
-      Dafny.Helpers.Print((_47_aScore));
+      Dafny.ISequence<Dafny.Rune> _50_scoreMessage;
+      _50_scoreMessage = Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Customer credit score: "), _48_customerName), Dafny.Sequence<Dafny.Rune>.UnicodeFromString(": "));
+      Dafny.Helpers.Print((_50_scoreMessage).ToVerbatimString(false));
+      Dafny.Helpers.Print((_49_aScore));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
-      score = _47_aScore;
+      score = _49_aScore;
       return score;
     }
     public bool verifyCapitalAmount(BigInteger fundValue, BigInteger fundMinimum, BigInteger loanAmount)
@@ -749,155 +777,223 @@ namespace BankSystem {
     {
       bool success = false;
       (this).printFundValues();
-      BigInteger _49_loanAmount;
-      BigInteger _out25;
-      _out25 = (theLoan).getRequiredAmount();
-      _49_loanAmount = _out25;
-      BigInteger _50_startingCapitalfund;
-      _50_startingCapitalfund = this.capitalFundValue;
-      BigInteger _51_startingReserveFund;
-      _51_startingReserveFund = this.reservedFunds;
-      (this).capitalFundValue = (this.capitalFundValue) - (_49_loanAmount);
-      (this).reservedFunds = (this.reservedFunds) + (_49_loanAmount);
-      BigInteger _52_finishingCapitalFund;
-      _52_finishingCapitalFund = this.capitalFundValue;
-      BigInteger _53_finishingReservedFund;
-      _53_finishingReservedFund = this.reservedFunds;
-      bool _54_both;
-      _54_both = ((_52_finishingCapitalFund) == ((_50_startingCapitalfund) - (_49_loanAmount))) && ((_53_finishingReservedFund) == ((_51_startingReserveFund) + (_49_loanAmount)));
+      BigInteger _51_loanAmount;
+      BigInteger _out27;
+      _out27 = (theLoan).getRequiredAmount();
+      _51_loanAmount = _out27;
+      BigInteger _52_startingCapitalfund;
+      _52_startingCapitalfund = this.capitalFundValue;
+      BigInteger _53_startingReserveFund;
+      _53_startingReserveFund = this.reservedFunds;
+      (this).capitalFundValue = (this.capitalFundValue) - (_51_loanAmount);
+      (this).reservedFunds = (this.reservedFunds) + (_51_loanAmount);
+      BigInteger _54_finishingCapitalFund;
+      _54_finishingCapitalFund = this.capitalFundValue;
+      BigInteger _55_finishingReservedFund;
+      _55_finishingReservedFund = this.reservedFunds;
+      bool _56_both;
+      _56_both = ((_54_finishingCapitalFund) == ((_52_startingCapitalfund) - (_51_loanAmount))) && ((_55_finishingReservedFund) == ((_53_startingReserveFund) + (_51_loanAmount)));
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("LOAN FUNDS RESERVED"));
       (this).printFundValues();
-      success = _54_both;
+      success = _56_both;
       return success;
     }
     public void completeApplication(User.Customer theCustomer, Product.PersonalLoan theLoan)
     {
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("BEGINNING APPLICATION COMPLETION PROCESS"));
       (theLoan).printLoanDetails();
-      Dafny.ISequence<Dafny.Rune> _55_loanStatus;
-      Dafny.ISequence<Dafny.Rune> _out26;
-      _out26 = (theLoan).getStatus();
-      _55_loanStatus = _out26;
-      if ((_55_loanStatus).Equals(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("rejected"))) {
-        Dafny.ISequence<Dafny.Rune> _56_message1;
-        _56_message1 = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("We are sorry that your application cannot be processed at this time.");
-        bool _57_fundsReleased;
-        bool _out27;
-        _out27 = (this).releaseLoanFunds(theLoan);
-        _57_fundsReleased = _out27;
-        if (_57_fundsReleased) {
-          Dafny.ISequence<Dafny.Rune> _58_message2;
-          _58_message2 = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("LOAN FUNDS RELEASED");
-          (this).logEvent(_58_message2);
-          (this).informCustomer(theCustomer, _56_message1);
+      Dafny.ISequence<Dafny.Rune> _57_loanStatus;
+      Dafny.ISequence<Dafny.Rune> _out28;
+      _out28 = (theLoan).getStatus();
+      _57_loanStatus = _out28;
+      if ((_57_loanStatus).Equals(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("rejected"))) {
+        Dafny.ISequence<Dafny.Rune> _58_message1;
+        _58_message1 = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("We are sorry that your application cannot be processed at this time.");
+        bool _59_fundsReleased;
+        bool _out29;
+        _out29 = (this).releaseLoanFunds(theLoan);
+        _59_fundsReleased = _out29;
+        if (_59_fundsReleased) {
+          Dafny.ISequence<Dafny.Rune> _60_message2;
+          _60_message2 = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("LOAN FUNDS RELEASED");
+          (this).logEvent(_60_message2);
+          (this).informCustomer(theCustomer, _58_message1);
         }
       }
-      if ((_55_loanStatus).Equals(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("approved"))) {
-        bool _59_success;
-        bool _out28;
-        _out28 = (this).transferLoanToCustomer(theLoan, theCustomer);
-        _59_success = _out28;
-        Dafny.ISequence<Dafny.Rune> _60_accNo;
-        Dafny.ISequence<Dafny.Rune> _61_sortCode;
-        Dafny.ISequence<Dafny.Rune> _out29;
-        Dafny.ISequence<Dafny.Rune> _out30;
-        (theCustomer).getPaymentDetails(out _out29, out _out30);
-        _60_accNo = _out29;
-        _61_sortCode = _out30;
-        Dafny.ISequence<Dafny.Rune> _62_message;
-        _62_message = Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Your application has been successful. The required loan amount will be transferred to account number: "), _60_accNo), Dafny.Sequence<Dafny.Rune>.UnicodeFromString(" sort code: ")), _61_sortCode);
-        (this).informCustomer(theCustomer, _62_message);
+      if ((_57_loanStatus).Equals(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("approved"))) {
+        bool _61_success;
+        bool _out30;
+        _out30 = (this).transferLoanToCustomer(theLoan, theCustomer);
+        _61_success = _out30;
+        Dafny.ISequence<Dafny.Rune> _62_accNo;
+        Dafny.ISequence<Dafny.Rune> _63_sortCode;
+        Dafny.ISequence<Dafny.Rune> _out31;
+        Dafny.ISequence<Dafny.Rune> _out32;
+        (theCustomer).getPaymentDetails(out _out31, out _out32);
+        _62_accNo = _out31;
+        _63_sortCode = _out32;
+        Dafny.ISequence<Dafny.Rune> _64_message;
+        _64_message = Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Your application has been successful. The required loan amount will be transferred to account number: "), _62_accNo), Dafny.Sequence<Dafny.Rune>.UnicodeFromString(" sort code: ")), _63_sortCode);
+        (this).informCustomer(theCustomer, _64_message);
       }
     }
     public bool releaseLoanFunds(Product.PersonalLoan theLoan)
     {
       bool success = false;
-      BigInteger _63_loanAmount;
-      BigInteger _out31;
-      _out31 = (theLoan).getRequiredAmount();
-      _63_loanAmount = _out31;
-      BigInteger _64_startingCapitalfund;
-      _64_startingCapitalfund = this.capitalFundValue;
-      BigInteger _65_startingReserveFund;
-      _65_startingReserveFund = this.reservedFunds;
-      (this).capitalFundValue = (this.capitalFundValue) + (_63_loanAmount);
-      (this).reservedFunds = (this.reservedFunds) - (_63_loanAmount);
-      BigInteger _66_finishingCapitalFund;
-      _66_finishingCapitalFund = this.capitalFundValue;
-      BigInteger _67_finishingReservedFund;
-      _67_finishingReservedFund = this.reservedFunds;
-      bool _68_both;
-      _68_both = ((_66_finishingCapitalFund) == ((_64_startingCapitalfund) + (_63_loanAmount))) && ((_67_finishingReservedFund) == ((_65_startingReserveFund) - (_63_loanAmount)));
+      bool _65_accessCapitalFund;
+      _65_accessCapitalFund = false;
+      bool _66_accessReservedFund;
+      _66_accessReservedFund = false;
+      while (!(_65_accessCapitalFund)) {
+        bool _out33;
+        _out33 = (this).requestCapitalAccess(theLoan);
+        _65_accessCapitalFund = _out33;
+      }
+      while (!(_66_accessReservedFund)) {
+        bool _out34;
+        _out34 = (this).requestReservedAccess(theLoan);
+        _66_accessReservedFund = _out34;
+      }
+      BigInteger _67_loanAmount;
+      BigInteger _out35;
+      _out35 = (theLoan).getRequiredAmount();
+      _67_loanAmount = _out35;
+      BigInteger _68_startingCapitalfund;
+      _68_startingCapitalfund = this.capitalFundValue;
+      BigInteger _69_startingReserveFund;
+      _69_startingReserveFund = this.reservedFunds;
+      (this).capitalFundValue = (this.capitalFundValue) + (_67_loanAmount);
+      (this).reservedFunds = (this.reservedFunds) - (_67_loanAmount);
+      BigInteger _70_finishingCapitalFund;
+      _70_finishingCapitalFund = this.capitalFundValue;
+      BigInteger _71_finishingReservedFund;
+      _71_finishingReservedFund = this.reservedFunds;
+      bool _72_both;
+      _72_both = ((_70_finishingCapitalFund) == ((_68_startingCapitalfund) + (_67_loanAmount))) && ((_71_finishingReservedFund) == ((_69_startingReserveFund) - (_67_loanAmount)));
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("RESERVED LOAN FUNDS RELEASED"));
       (this).printFundValues();
-      success = _68_both;
+      (this).releaseReservedAccess(theLoan);
+      (this).releaseCapitalAccess(theLoan);
+      success = _72_both;
       return success;
     }
     public bool transferLoanToCustomer(Product.PersonalLoan theLoan, User.Customer theCustomer)
     {
       bool success = false;
-      Dafny.ISequence<Dafny.Rune> _69_accNo;
-      Dafny.ISequence<Dafny.Rune> _70_sortCode;
-      Dafny.ISequence<Dafny.Rune> _out32;
-      Dafny.ISequence<Dafny.Rune> _out33;
-      (theCustomer).getPaymentDetails(out _out32, out _out33);
-      _69_accNo = _out32;
-      _70_sortCode = _out33;
-      Dafny.ISequence<Dafny.Rune> _71_message;
-      _71_message = Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Transfer funds: account number:"), _69_accNo), Dafny.Sequence<Dafny.Rune>.UnicodeFromString(" sort code: ")), _70_sortCode);
-      BigInteger _72_loanAmount;
-      BigInteger _out34;
-      _out34 = (theLoan).getRequiredAmount();
-      _72_loanAmount = _out34;
-      BigInteger _73_startingReserveFund;
-      _73_startingReserveFund = this.reservedFunds;
-      (this).reservedFunds = (this.reservedFunds) - (_72_loanAmount);
-      BigInteger _74_finishingReservedFund;
-      _74_finishingReservedFund = this.reservedFunds;
-      bool _75_transferred;
-      _75_transferred = (_74_finishingReservedFund) == ((_73_startingReserveFund) - (_72_loanAmount));
+      bool _73_access;
+      _73_access = false;
+      while (!(_73_access)) {
+        bool _out36;
+        _out36 = (this).requestReservedAccess(theLoan);
+        _73_access = _out36;
+      }
+      Dafny.ISequence<Dafny.Rune> _74_accNo;
+      Dafny.ISequence<Dafny.Rune> _75_sortCode;
+      Dafny.ISequence<Dafny.Rune> _out37;
+      Dafny.ISequence<Dafny.Rune> _out38;
+      (theCustomer).getPaymentDetails(out _out37, out _out38);
+      _74_accNo = _out37;
+      _75_sortCode = _out38;
+      Dafny.ISequence<Dafny.Rune> _76_message;
+      _76_message = Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Transfer funds: account number:"), _74_accNo), Dafny.Sequence<Dafny.Rune>.UnicodeFromString(" sort code: ")), _75_sortCode);
+      BigInteger _77_loanAmount;
+      BigInteger _out39;
+      _out39 = (theLoan).getRequiredAmount();
+      _77_loanAmount = _out39;
+      BigInteger _78_startingReserveFund;
+      _78_startingReserveFund = this.reservedFunds;
+      (this).reservedFunds = (this.reservedFunds) - (_77_loanAmount);
+      BigInteger _79_finishingReservedFund;
+      _79_finishingReservedFund = this.reservedFunds;
+      bool _80_transferred;
+      _80_transferred = (_79_finishingReservedFund) == ((_78_startingReserveFund) - (_77_loanAmount));
       (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("LOAN FUNDS TRANSFERRED"));
       (this).printFundValues();
-      success = _75_transferred;
+      (this).releaseReservedAccess(theLoan);
+      success = _80_transferred;
       return success;
     }
     public void logEvent(Dafny.ISequence<Dafny.Rune> eventMessage)
     {
-      Dafny.ISequence<Dafny.Rune> _76_message;
-      _76_message = Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("System Log: Event :: "), eventMessage);
-      Dafny.Helpers.Print((_76_message).ToVerbatimString(false));
+      Dafny.ISequence<Dafny.Rune> _81_message;
+      _81_message = Dafny.Sequence<Dafny.Rune>.Concat(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("System Log: Event :: "), eventMessage);
+      Dafny.Helpers.Print((_81_message).ToVerbatimString(false));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
     }
     public void printFundValues()
     {
-      Dafny.ISequence<Dafny.Rune> _77_cfv;
-      _77_cfv = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("CAPITAL FUND VALUE :: £");
-      Dafny.ISequence<Dafny.Rune> _78_rfv;
-      _78_rfv = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("RESERVED FUND VALUE :: £");
-      Dafny.Helpers.Print((_77_cfv).ToVerbatimString(false));
+      Dafny.ISequence<Dafny.Rune> _82_cfv;
+      _82_cfv = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("CAPITAL FUND VALUE :: £");
+      Dafny.ISequence<Dafny.Rune> _83_rfv;
+      _83_rfv = Dafny.Sequence<Dafny.Rune>.UnicodeFromString("RESERVED FUND VALUE :: £");
+      Dafny.Helpers.Print((_82_cfv).ToVerbatimString(false));
       Dafny.Helpers.Print((this.capitalFundValue));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
-      Dafny.Helpers.Print((_78_rfv).ToVerbatimString(false));
+      Dafny.Helpers.Print((_83_rfv).ToVerbatimString(false));
       Dafny.Helpers.Print((this.reservedFunds));
       Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
     }
     public BigInteger getNextLoanReference()
     {
       BigInteger @ref = BigInteger.Zero;
-      BigInteger _79_oldRef;
-      _79_oldRef = this.nextLoanReference;
+      BigInteger _84_oldRef;
+      _84_oldRef = this.nextLoanReference;
       (this).nextLoanReference = (this.nextLoanReference) + (BigInteger.One);
-      @ref = _79_oldRef;
+      @ref = _84_oldRef;
       return @ref;
     }
     public BigInteger getNextCustomerReference()
     {
       BigInteger @ref = BigInteger.Zero;
-      BigInteger _80_oldRef;
-      _80_oldRef = this.nextCustomerReference;
+      BigInteger _85_oldRef;
+      _85_oldRef = this.nextCustomerReference;
       (this).nextCustomerReference = (this.nextCustomerReference) + (BigInteger.One);
-      @ref = _80_oldRef;
+      @ref = _85_oldRef;
       return @ref;
+    }
+    public bool requestCapitalAccess(Product.PersonalLoan loan)
+    {
+      bool granted = false;
+      if (!(this.capitalMutexAcquired)) {
+        (this).capitalMutexAcquired = true;
+        (this).capitalMutexOwner = loan;
+        granted = true;
+        (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("CAPITAL FUND MUTEX ACQUIRED"));
+        return granted;
+      } else {
+        granted = false;
+        return granted;
+      }
+    }
+    public void releaseCapitalAccess(Product.PersonalLoan loan)
+    {
+      if ((this.capitalMutexAcquired) && ((this.capitalMutexOwner) == (object) (loan))) {
+        (this).capitalMutexOwner = (Product.PersonalLoan)null;
+        (this).capitalMutexAcquired = false;
+        (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("CAPITAL FUND MUTEX RELEASED"));
+      }
+    }
+    public bool requestReservedAccess(Product.PersonalLoan loan)
+    {
+      bool granted = false;
+      if (!(this.reservedMutexAcquired)) {
+        (this).reservedMutexAcquired = true;
+        (this).reservedMutexOwner = loan;
+        (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("RESERVED FUND MUTEX ACQUIRED"));
+        granted = true;
+        return granted;
+      } else {
+        granted = false;
+        return granted;
+      }
+    }
+    public void releaseReservedAccess(Product.PersonalLoan loan)
+    {
+      if ((this.reservedMutexAcquired) && ((this.reservedMutexOwner) == (object) (loan))) {
+        (this).reservedMutexOwner = (Product.PersonalLoan)null;
+        (this).reservedMutexAcquired = false;
+        (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("RESERVED FUND MUTEX RELEASED"));
+      }
     }
     public Support.CreditReferenceAgency _referenceAgency {get; set;}
     public Support.CreditReferenceAgency referenceAgency { get {
