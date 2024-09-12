@@ -87,6 +87,24 @@ module {:extern "User"} User
     {
       return this.customerReference;
     }
+
+    method printCustomerDetails() returns ()
+    {
+      var ref: string := "Customer reference number: ";
+      var name: string := "Customer name: ";
+      var age: string := "Customer age: ";
+      var acc: string := "Customer account number: ";
+      var sort: string := "Customer sort code: ";
+      var income: string := "Customer monthly income: £";
+      var outgoings: string := "Customer monthly expenditure: £";
+      print ref, this.customerReference, "\n",
+            name, this.name, "\n", 
+            age, this.age, "\n",
+            acc, this.accountNumber, "\n",
+            sort, this.sortCode, "\n",
+            income, this.monthlyIncome, "\n",
+            outgoings, this.monthlyOutgoings, "\n"; 
+    }
   }
 
   class Reference {

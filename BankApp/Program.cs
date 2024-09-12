@@ -9,7 +9,7 @@ class Program
 {
   static void Main(string[] args)
   {
-    Console.WriteLine($"{Environment.NewLine}Enter bank capital fund value of 500000 or blank to exit:");
+    Console.WriteLine($"{Environment.NewLine}Enter bank capital fund value of 500000 or above or blank to exit:");
     string? input = Console.ReadLine();
     if (string.IsNullOrEmpty(input)) {return;}
     int value = int.Parse(input);
@@ -134,7 +134,7 @@ class UserInterface
         exit = true;
       } else {
         requiredAmount = int.Parse(input);
-        if (requiredAmount < 5000 || requiredAmount > 10000 || ((requiredAmount % 200) != 0)) {
+        if (requiredAmount < 5000 || requiredAmount > 10000 || ((requiredAmount % 100) != 0)) {
           exit = true;
         }
       }

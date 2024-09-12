@@ -70,7 +70,7 @@ module {:extern "Product"} Product
         case repaymentPeriod == 48 => totalAmount := PersonalLoan.monthLoan48[anAmount];
         case repaymentPeriod == 60 => totalAmount := PersonalLoan.monthLoan60[anAmount];
       }
-      var monthlyAmount: real := (totalAmount / repaymentPeriod as real);
+      var monthlyAmount: real := totalAmount / (repaymentPeriod as real);
       return totalAmount, monthlyAmount;
     }
     
@@ -227,6 +227,26 @@ module {:extern "Product"} Product
     ensures amount == this.requiredAmount
     {
       return this.requiredAmount;
+    }
+
+    method printLoanDetails () returns ()
+    requires !(this.statusPending == this.statusRejected == this.statusApproved)
+    {
+      var ref: string := "Loan reference number: ";
+      var amount: string := "Required amount: £";
+      var period: string := "Required repayment period: ";
+      var rate: string := "Interest rate ";
+      var total: string := "Total repayable amount: £";
+      var monthly: string := "Monthly repayable amount: £";
+      var status: string := "Current loan status: ";
+      var currentStatus: string := this.getStatus();
+      print ref, this.referenceNumber, "\n",
+            amount, this.requiredAmount, ".00", "\n",
+            period, this.repaymentPeriod, " months", "\n",
+            rate, this.interestRate, "%", "\n",
+            total, this.totalAmountRepayable, "\n",
+            monthly, this.monthlyRepaymentAmount, "\n",
+            status, currentStatus, "\n";
     }
   }
 

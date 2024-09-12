@@ -54,7 +54,7 @@ module {:extern "BankSystem"} BankSystem
     modifies this`capitalFundValue
     modifies this`reservedFunds
     {
-      logEvent("BEGINNING APPLICATION PROCESS");
+      logEvent("BEGINNING LOAN APPLICATION PROCESS");
       var interest: real := 0.0;
       if {
         case (5_000 <= requiredAmount <= 7_499) => interest := 13.6;
@@ -63,22 +63,28 @@ module {:extern "BankSystem"} BankSystem
       var loan: PersonalLoan? := new PersonalLoan(requiredAmount, repaymentPeriod, interest);
       if (loan == null) {
         logEvent("ERROR: UNABLE TO CREATE LOAN");
-        return;
         }
       var customer: Customer?, applicationStatus: bool := this.registerApplication(name, age, accountNumber, sortCode, monthlyIncome, 
-                                                                                  monthlyOutgoings, loan);
+                                                                                   monthlyOutgoings, loan);
+      // if capital fund verification fails
+      if (!applicationStatus) {
+        logEvent("LOAN APPLICATION PROCESS COMPLETE");
+        return;  
+      }
       if (customer == null) {
         logEvent("ERROR: UNABLE TO CREATE CUSTOMER");
         return;
         }
-      applicationStatus := this.processApplication(customer, loan);
+      if (applicationStatus) {
+        applicationStatus := this.processApplication(customer, loan);
+      }
       if {  
         case applicationStatus == false => loan.setStatus("rejected");
         case applicationStatus == true => loan.setStatus("approved");
       }
       assume {:axiom} !(loan.statusPending == loan.statusRejected == loan.statusApproved);
       this.completeApplication(customer, loan);
-      logEvent("APPLICATION PROCESS COMPLETE"); 
+      logEvent("LOAN APPLICATION PROCESS COMPLETE"); 
     }
 
     method registerApplication(name: string, age: nat, accountNumber: string, sortCode: string, monthlyIncome: real, monthlyOutgoings: real, 
@@ -96,11 +102,16 @@ module {:extern "BankSystem"} BankSystem
       var loanRegistered :bool := false;
       var customer: Customer? := this.registerCustomer(name, age, accountNumber, sortCode, monthlyIncome, monthlyOutgoings);
       if (customer == null) {return customer, loanRegistered;}
-      isLoanRegistered := this.registerLoan(aLoan);
+      loanRegistered := this.registerLoan(aLoan);
       var customerRef: nat := customer.getCustomerReference();
       var loanRef: nat := aLoan.getLoanReference();
       this.associateCustomerLoan(loanRef, customerRef);
-      var message: string := "Your application has been recieved and will be processed";
+      var message: string;
+      if (loanRegistered) {
+        message := "Your application has been recieved and will be processed";
+      } else {
+        message := "We are sorry that your application cannot be processed at this time.";
+      }
       this.informCustomer(customer, message);
       logEvent("APPLICATION REGISTRATION COMPLETE"); 
       return customer, loanRegistered;
@@ -113,6 +124,7 @@ module {:extern "BankSystem"} BankSystem
       var aCustomer: Customer? := new Customer(name, age, accountNumber, sortCode, monthlyIncome, monthlyOutgoings);
       if (aCustomer == null) {return aCustomer;}
       this.addCustomer(aCustomer);
+      aCustomer.printCustomerDetails();
       logEvent("CUSTOMER REGISTRATION COMPLETE");
       return aCustomer;
     }
@@ -129,14 +141,21 @@ module {:extern "BankSystem"} BankSystem
       var verified: bool := false;
       var loanAmount: nat := aLoan.getRequiredAmount();
       verified := this.verifyCapitalAmount(this.capitalFundValue, this.capitalFundMinimumThreshold, loanAmount); // verify capital fund
-        // insert logging message cpital amount
-      if (verified) {verified := this.reserveLoanFunds(aLoan);} // capital amount has been verified so reserve loan funds
-      // insert logging message reserved loan funds
-      if (verified) {this.addLoan(aLoan);} // loan funds have been reserved so add loan to collection of loans
-      if (!verified) {
-        aLoan.setStatus("rejected"); // capital fund or reserve loan fund verification has failed
-        // customer is informed in this.completeApplication()
+      if (verified) {
+        logEvent("CAPITAL FUND VERIFICATION PASSED");
+        verified := this.reserveLoanFunds(aLoan);     // capital amount has been verified so reserve loan funds
+      } else {
+        logEvent("CAPITAL FUND VERIFICATION FAILED");
       }
+      if (verified) {
+        // loan funds reserved message in reserveLoanFunds()
+        this.addLoan(aLoan);                          // loan funds have been reserved so add loan to collection of loans
+      }
+      if (!verified) {
+        aLoan.setStatus("rejected");                  // capital fund or reserve loan fund verification has failed
+      }                                               // customer will be informed in registerApplication()
+      assume {:axiom} !(aLoan.statusPending == aLoan.statusRejected == aLoan.statusApproved);
+      aLoan.printLoanDetails();
       logEvent("LOAN REGISTRATION COMPLETE");
       return verified;
     }
@@ -151,31 +170,40 @@ module {:extern "BankSystem"} BankSystem
 
     method processApplication(aCustomer: Customer, aLoan: PersonalLoan) returns (isSuccessful: bool)
     {
-      logEvent("BEGINNING PROCESSING APPLICATION PROCESS");
+      logEvent("BEGINNING PROCESSING APPLICATION");
       var verified: bool := false;
       var customerAge: nat := aCustomer.getAge();
       verified := aLoan.verifyAgeCriteria(customerAge);
       if (!verified) {
+        logEvent("AGE CRITERIA VERIFICATION FAILED");
         var message: string := "Your application has failed the loan age criteria process";
         this.informCustomer(aCustomer, message);
         return verified;
+      } else {
+        logEvent("AGE CRITERIA VERIFICATION PASSED");
       }
       var customerMonthlyIncome: real := aCustomer.getMonthlyIncome();
       var customerMonthlyOutgoings : real := aCustomer.getMonthlyOutgoings();
       verified := aLoan.verifyIncomeCriteria(customerMonthlyIncome, customerMonthlyOutgoings);
       if (!verified) {
+        logEvent("INCOME CRITERIA VERIFICATION FAILED");
         var message: string := "Your application has failed the loan income criteria process";
         this.informCustomer(aCustomer, message);
         return verified;
+      } else {
+        logEvent("AGE CRITERIA VERIFICATION PASSED");
       }
       var customerCreditScore: nat := this.obtainCustomerCreditScore(this.referenceAgency, aCustomer);
       verified := aLoan.verifyCreditScore(customerCreditScore);
       if (!verified) {
+        logEvent("CREDIT SCORE CRITERIA VERIFICATION FAILED");
         var message: string := "Your application has failed the credit score criteria process";
         this.informCustomer(aCustomer, message);
         return verified;
+      } else {
+        logEvent("CREDIT SCORE CRITERIA VERIFICATION PASSED");
       }
-      logEvent("PROCESSING APPLICATION PROCESS COMPLETE");
+      logEvent("PROCESSING APPLICATION COMPLETE");
       return verified;
     }
 
@@ -197,7 +225,7 @@ module {:extern "BankSystem"} BankSystem
     {
       var customerName := aCustomer.getName();
       var customerMessage := "Customer Message: " + customerName + " :: " + message;
-      print customerMessage, "\n"; 
+      print "\n", customerMessage, "\n\n"; 
     }
 
     method obtainCustomerCreditScore(referenceAgency: CreditReferenceAgency, aCustomer: Customer) returns (score: nat)
@@ -206,7 +234,9 @@ module {:extern "BankSystem"} BankSystem
       var customerName: string := aCustomer.getName();
       assume {:axiom} customerName in referenceAgency.creditScores;
       var aScore: nat := referenceAgency.getCreditScore(customerName);
-      logEvent("CUSTOMER CREDIT SCORE OBTAINED"); 
+      logEvent("CUSTOMER CREDIT SCORE OBTAINED");
+      var scoreMessage: string := "Customer credit score: " + customerName + ": ";
+      print scoreMessage, aScore, "\n"; 
       return aScore;
     }
 
@@ -234,6 +264,7 @@ module {:extern "BankSystem"} BankSystem
       var both: bool := (finishingCapitalFund == (startingCapitalfund - loanAmount)) && 
                         (finishingReservedFund == (startingReserveFund + loanAmount));
       logEvent("LOAN FUNDS RESERVED");
+      this.printFundValues();
       return both;
     }
 
@@ -245,21 +276,20 @@ module {:extern "BankSystem"} BankSystem
       logEvent("BEGINNING APPLICATION COMPLETION PROCESS");
       var loanStatus: string := theLoan.getStatus();
       if (loanStatus == "rejected") {
-        var message: string := "We are sorry that your application cannot be processed at this time.";
+        var message1: string := "We are sorry that your application cannot be processed at this time.";
         var fundsReleased: bool := this.releaseLoanFunds(theLoan);
         if (fundsReleased) {
-          // add logging
-          var message: string := "Loan funds released";
-          this.logEvent(message);
+          var message2: string := "LOAN FUNDS RELEASED";
+          this.logEvent(message2);
+          this.informCustomer(theCustomer, message1);
         }
       }
       if (loanStatus == "approved") {
         var success: bool := transferLoanToCustomer(theLoan, theCustomer);
         var accNo: string, sortCode: string := theCustomer.getPaymentDetails();
-        var message: string := "Your application has been successful. The required loan amount has been transferred to account number: " + 
+        var message: string := "Your application has been successful. The required loan amount will be transferred to account number: " + 
                                 accNo + " sort code: " + sortCode;
         this.informCustomer(theCustomer, message);
-        logEvent("APPLICATION COMPLETION PROCESS COMPLETE");
       }
     }
 
@@ -279,6 +309,7 @@ module {:extern "BankSystem"} BankSystem
       var both: bool := (finishingCapitalFund == (startingCapitalfund + loanAmount)) && 
                         (finishingReservedFund == (startingReserveFund - loanAmount));
       logEvent("RESERVED LOAN FUNDS RELEASED");
+      this.printFundValues();
       return both;
     }
 
@@ -295,6 +326,7 @@ module {:extern "BankSystem"} BankSystem
       var finishingReservedFund: nat := this.reservedFunds;
       var transferred: bool := (finishingReservedFund == (startingReserveFund - loanAmount));
       logEvent("LOAN FUNDS TRANSFERRED");
+      this.printFundValues();
       return transferred;
     }
 
@@ -302,6 +334,14 @@ module {:extern "BankSystem"} BankSystem
     {
       var message: string := "System Log: Event :: " + eventMessage;
       print message, "\n"; 
+    }
+
+    method printFundValues() returns ()
+    {
+      var cfv: string := "CAPITAL FUND VALUE :: £";
+      var rfv: string := "RESERVED FUND VALUE :: £";
+      print cfv, this.capitalFundValue, "\n", 
+            rfv, this.reservedFunds, "\n";
     }
   }
 }
