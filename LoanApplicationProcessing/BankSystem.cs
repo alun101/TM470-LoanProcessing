@@ -18,12 +18,811 @@
 //
 // Verified Loan Application Processing - TM470
 // Alun Evans
-//
+// This file contains the generated c# code for the parts of the program written in Dafny
+// For traceability, the Dafny source code from which the c# was generated is included from lines 33 - 825
+// function call at line 858 has been modified to allow for async
+// public bool addPerson(Dafny.ISequence<Dafny.Rune> name, BigInteger creditScoreSetup)
+// changed to
+// public async Task<bool> addPerson(Dafny.ISequence<Dafny.Rune> name, BigInteger creditScoreSetup)
 //--------------------------------------------------------------------------------------------------------------------
 
 using System;
 using System.Numerics;
 using System.Collections;
+
+/***************************  START OF DAFNY SOURCE CODE  *************************************************************
+[assembly: DafnyAssembly.DafnySourceAttribute(@"// dafny 4.7.0.0
+// Command-line arguments: translate cs c:\Users\aevans\OneDrive - Sencon UK Ltd\Desktop\WIP\TM470-LoanProcessing\LoanApplicationProcessing\BankSystem.dfy
+// BankSystem.dfy
+
+
+module {:extern ""BankSystem""} BankSystem {
+
+  import opened Support
+
+  import opened Product
+
+  import opened User
+
+  export
+    reveals *
+    provides Support, Product, User
+    reveals Bank, Bank.capitalFundMinimumThreshold, Bank.referenceAgency
+    provides Bank.capitalFundValue, Bank.reservedFunds, Bank.loans, Bank.customers, Bank.customerLoans, Bank.nextCustomerReference, Bank.nextLoanReference, Bank.capitalMutexAcquired, Bank.capitalMutexOwner, Bank.reservedMutexAcquired, Bank.reservedMutexOwner, Bank._ctor, Bank.newApplication, Bank.registerApplication, Bank.registerCustomer, Bank.registerLoan, Bank.associateCustomerLoan, Bank.processApplication, Bank.addLoan, Bank.addCustomer, Bank.informCustomer, Bank.obtainCustomerCreditScore, Bank.verifyCapitalAmount, Bank.reserveLoanFunds, Bank.completeApplication, Bank.releaseLoanFunds, Bank.transferLoanToCustomer, Bank.logEvent, Bank.printFundValues, Bank.getNextLoanReference, Bank.getNextCustomerReference, Bank.requestCapitalAccess, Bank.releaseCapitalAccess, Bank.requestReservedAccess, Bank.releaseReservedAccess
+
+  class Bank {
+    const capitalFundMinimumThreshold: nat := 500000
+    const referenceAgency: CreditReferenceAgency
+    var capitalFundValue: nat
+    var reservedFunds: nat
+    var loans: set<PersonalLoan>
+    var customers: set<Customer>
+    var customerLoans: map<nat, nat>
+    var nextCustomerReference: nat
+    var nextLoanReference: nat
+    var capitalMutexAcquired: bool
+    var capitalMutexOwner: PersonalLoan?
+    var reservedMutexAcquired: bool
+    var reservedMutexOwner: PersonalLoan?
+
+    constructor (aValue: nat, aReferenceAgency: CreditReferenceAgency)
+      ensures this.capitalFundValue == aValue
+      ensures this.referenceAgency == aReferenceAgency
+      ensures this.nextCustomerReference == 1000000
+      ensures this.nextLoanReference == 1000000
+      ensures this.capitalMutexAcquired == false
+      ensures this.reservedMutexAcquired == false
+      ensures this.capitalMutexOwner == null
+      ensures this.reservedMutexOwner == null
+      decreases aValue, aReferenceAgency
+    {
+      this.capitalFundValue := aValue;
+      this.referenceAgency := aReferenceAgency;
+      this.nextCustomerReference := 1000000;
+      this.nextLoanReference := 1000000;
+      this.capitalMutexAcquired := false;
+      this.reservedMutexAcquired := false;
+      this.capitalMutexOwner := null;
+      this.reservedMutexOwner := null;
+    }
+
+    method newApplication(name: string, age: nat, accountNumber: string, sortCode: string, monthlyIncome: real, monthlyOutgoings: real, requiredAmount: nat, repaymentPeriod: nat)
+      requires requiredAmount in PersonalLoan.monthLoan24 || requiredAmount in PersonalLoan.monthLoan36 || requiredAmount in PersonalLoan.monthLoan48 || requiredAmount in PersonalLoan.monthLoan60
+      requires repaymentPeriod == 24 || repaymentPeriod == 36 || repaymentPeriod == 48 || repaymentPeriod == 60
+      modifies this
+      decreases name, age, accountNumber, sortCode, monthlyIncome, monthlyOutgoings, requiredAmount, repaymentPeriod
+    {
+      logEvent(""BEGINNING LOAN APPLICATION PROCESS"");
+      var interest: real := 0.0;
+      if {
+        case 5000 <= requiredAmount <= 7499 =>
+          interest := 13.6;
+        case 7500 <= requiredAmount <= 10000 =>
+          interest := 6.3;
+      }
+      var ref: nat := getNextLoanReference();
+      var loan: PersonalLoan? := new PersonalLoan(requiredAmount, repaymentPeriod, interest, ref);
+      if loan == null {
+        logEvent(""ERROR: UNABLE TO CREATE LOAN"");
+      }
+      var customer: Customer?, applicationStatus: bool := this.registerApplication(name, age, accountNumber, sortCode, monthlyIncome, monthlyOutgoings, loan);
+      if !applicationStatus {
+        logEvent(""LOAN APPLICATION PROCESS COMPLETE"");
+        return;
+      }
+      if customer == null {
+        logEvent(""ERROR: UNABLE TO CREATE CUSTOMER"");
+        return;
+      }
+      if applicationStatus {
+        applicationStatus := this.processApplication(customer, loan);
+      }
+      if {
+        case applicationStatus == false =>
+          loan.setStatus(""rejected"");
+        case applicationStatus == true =>
+          loan.setStatus(""approved"");
+      }
+      assume {:axiom} !(loan.statusPending == loan.statusRejected == loan.statusApproved);
+      this.completeApplication(customer, loan);
+      logEvent(""LOAN APPLICATION PROCESS COMPLETE"");
+    }
+
+    method registerApplication(name: string, age: nat, accountNumber: string, sortCode: string, monthlyIncome: real, monthlyOutgoings: real, aLoan: PersonalLoan)
+        returns (aCustomer: Customer?, isLoanRegistered: bool)
+      modifies this, aLoan`statusPending, aLoan`statusRejected, aLoan`statusApproved
+      decreases name, age, accountNumber, sortCode, monthlyIncome, monthlyOutgoings, aLoan
+    {
+      logEvent(""BEGINNING APPLICATION REGISTRATION"");
+      var loanRegistered: bool := false;
+      var customer: Customer? := this.registerCustomer(name, age, accountNumber, sortCode, monthlyIncome, monthlyOutgoings);
+      if customer == null {
+        return customer, loanRegistered;
+      }
+      loanRegistered := this.registerLoan(aLoan);
+      var customerRef: nat := customer.getCustomerReference();
+      var loanRef: nat := aLoan.getLoanReference();
+      this.associateCustomerLoan(loanRef, customerRef);
+      var message: string;
+      if loanRegistered {
+        message := ""Your application has been recieved and will be processed"";
+      } else {
+        message := ""We are sorry that your application cannot be processed at this time."";
+      }
+      this.informCustomer(customer, message);
+      logEvent(""APPLICATION REGISTRATION COMPLETE"");
+      return customer, loanRegistered;
+    }
+
+    method registerCustomer(name: string, age: nat, accountNumber: string, sortCode: string, monthlyIncome: real, monthlyOutgoings: real)
+        returns (newCustomer: Customer?)
+      modifies this`customers, this`nextCustomerReference
+      decreases name, age, accountNumber, sortCode, monthlyIncome, monthlyOutgoings
+    {
+      logEvent(""BEGINNING CUSTOMER REGISTRATION"");
+      var ref: nat := getNextCustomerReference();
+      var aCustomer: Customer? := new Customer(name, age, accountNumber, sortCode, monthlyIncome, monthlyOutgoings, ref);
+      if aCustomer == null {
+        return aCustomer;
+      }
+      this.addCustomer(aCustomer);
+      aCustomer.printCustomerDetails();
+      logEvent(""CUSTOMER REGISTRATION COMPLETE"");
+      return aCustomer;
+    }
+
+    method registerLoan(aLoan: PersonalLoan) returns (success: bool)
+      modifies this, aLoan`statusPending, aLoan`statusRejected, aLoan`statusApproved
+      decreases aLoan
+    {
+      logEvent(""BEGINNING LOAN REGISTRATION"");
+      var accessCapitalFund: bool := false;
+      var accessReservedFund: bool := false;
+      assume {:axiom} accessCapitalFund;
+      while !accessCapitalFund {
+        accessCapitalFund := this.requestCapitalAccess(aLoan);
+      }
+      assume {:axiom} accessReservedFund;
+      while !accessReservedFund {
+        accessReservedFund := this.requestReservedAccess(aLoan);
+      }
+      var verified: bool := false;
+      var loanAmount: nat := aLoan.getRequiredAmount();
+      verified := this.verifyCapitalAmount(this.capitalFundValue, this.capitalFundMinimumThreshold, loanAmount);
+      if verified {
+        logEvent(""CAPITAL FUND VERIFICATION PASSED"");
+        verified := this.reserveLoanFunds(aLoan);
+      } else {
+        logEvent(""CAPITAL FUND VERIFICATION FAILED"");
+      }
+      if verified {
+        this.addLoan(aLoan);
+      }
+      if !verified {
+        aLoan.setStatus(""rejected"");
+      }
+      assume {:axiom} !(aLoan.statusPending == aLoan.statusRejected == aLoan.statusApproved);
+      aLoan.printLoanDetails();
+      logEvent(""LOAN REGISTRATION COMPLETE"");
+      releaseReservedAccess(aLoan);
+      releaseCapitalAccess(aLoan);
+      return verified;
+    }
+
+    method associateCustomerLoan(loanReferenceNumber: nat, customerReferenceNumber: nat)
+      modifies this`customerLoans
+      ensures loanReferenceNumber in customerLoans
+      ensures customerLoans[loanReferenceNumber] == customerReferenceNumber
+      decreases loanReferenceNumber, customerReferenceNumber
+    {
+      this.customerLoans := map[loanReferenceNumber := customerReferenceNumber];
+    }
+
+    method processApplication(aCustomer: Customer, aLoan: PersonalLoan) returns (isSuccessful: bool)
+      decreases aCustomer, aLoan
+    {
+      logEvent(""BEGINNING PROCESSING APPLICATION"");
+      var verified: bool := false;
+      var customerAge: nat := aCustomer.getAge();
+      verified := aLoan.verifyAgeCriteria(customerAge);
+      if !verified {
+        logEvent(""AGE CRITERIA VERIFICATION FAILED"");
+        var message: string := ""Your application has failed the loan age criteria process"";
+        this.informCustomer(aCustomer, message);
+        return verified;
+      } else {
+        logEvent(""AGE CRITERIA VERIFICATION PASSED"");
+      }
+      var customerMonthlyIncome: real := aCustomer.getMonthlyIncome();
+      var customerMonthlyOutgoings: real := aCustomer.getMonthlyOutgoings();
+      verified := aLoan.verifyIncomeCriteria(customerMonthlyIncome, customerMonthlyOutgoings);
+      if !verified {
+        logEvent(""INCOME CRITERIA VERIFICATION FAILED"");
+        var message: string := ""Your application has failed the loan income criteria process"";
+        this.informCustomer(aCustomer, message);
+        return verified;
+      } else {
+        logEvent(""INCOME CRITERIA VERIFICATION PASSED"");
+      }
+      var customerCreditScore: nat := this.obtainCustomerCreditScore(this.referenceAgency, aCustomer);
+      verified := aLoan.verifyCreditScore(customerCreditScore);
+      if !verified {
+        logEvent(""CREDIT SCORE CRITERIA VERIFICATION FAILED"");
+        var message: string := ""Your application has failed the credit score criteria process"";
+        this.informCustomer(aCustomer, message);
+        return verified;
+      } else {
+        logEvent(""CREDIT SCORE CRITERIA VERIFICATION PASSED"");
+      }
+      logEvent(""PROCESSING APPLICATION COMPLETE"");
+      return verified;
+    }
+
+    method addLoan(aLoan: PersonalLoan)
+      modifies this`loans
+      ensures aLoan in this.loans
+      decreases aLoan
+    {
+      this.loans := this.loans + {aLoan};
+    }
+
+    method addCustomer(aCustomer: Customer)
+      modifies this`customers
+      ensures aCustomer in this.customers
+      decreases aCustomer
+    {
+      this.customers := this.customers + {aCustomer};
+    }
+
+    method informCustomer(aCustomer: Customer, message: string)
+      decreases aCustomer, message
+    {
+      var customerName := aCustomer.getName();
+      var customerMessage := ""Customer Message: "" + customerName + "" :: "" + message;
+      print ""\n"", customerMessage, ""\n\n"";
+    }
+
+    method obtainCustomerCreditScore(referenceAgency: CreditReferenceAgency, aCustomer: Customer) returns (score: nat)
+      decreases referenceAgency, aCustomer
+    {
+      logEvent(""CUSTOMER CREDIT SCORE REQUESTED"");
+      var customerName: string := aCustomer.getName();
+      assume {:axiom} customerName in referenceAgency.creditScores;
+      var aScore: nat := referenceAgency.getCreditScore(customerName);
+      logEvent(""CUSTOMER CREDIT SCORE OBTAINED"");
+      var scoreMessage: string := ""Customer credit score: "" + customerName + "": "";
+      print scoreMessage, aScore, ""\n"";
+      return aScore;
+    }
+
+    method verifyCapitalAmount(fundValue: nat, fundMinimum: nat, loanAmount: nat)
+        returns (isVerified: bool)
+      ensures isVerified == (fundValue - loanAmount >= fundMinimum)
+      ensures !isVerified == (fundValue - loanAmount < fundMinimum)
+      decreases fundValue, fundMinimum, loanAmount
+    {
+      logEvent(""CAPITAL FUND VERIFICATION COMPLETE"");
+      return fundValue - loanAmount >= fundMinimum;
+    }
+
+    method reserveLoanFunds(theLoan: PersonalLoan) returns (success: bool)
+      modifies this`capitalFundValue, this`reservedFunds
+      ensures this.capitalFundValue + this.reservedFunds == old(capitalFundValue) + old(reservedFunds)
+      decreases theLoan
+    {
+      this.printFundValues();
+      var loanAmount: nat := theLoan.getRequiredAmount();
+      var startingCapitalfund: nat := this.capitalFundValue;
+      var startingReserveFund: nat := this.reservedFunds;
+      assume {:axiom} this.capitalFundValue - loanAmount > 0;
+      this.capitalFundValue := this.capitalFundValue - loanAmount;
+      this.reservedFunds := this.reservedFunds + loanAmount;
+      var finishingCapitalFund: nat := this.capitalFundValue;
+      var finishingReservedFund: nat := this.reservedFunds;
+      var both: bool := finishingCapitalFund == startingCapitalfund - loanAmount && finishingReservedFund == startingReserveFund + loanAmount;
+      logEvent(""LOAN FUNDS RESERVED"");
+      this.printFundValues();
+      return both;
+    }
+
+    method completeApplication(theCustomer: Customer, theLoan: PersonalLoan)
+      requires !(theLoan.statusPending == theLoan.statusRejected == theLoan.statusApproved)
+      modifies this`capitalFundValue, this`reservedFunds, this`reservedMutexAcquired, this`reservedMutexOwner, this`capitalMutexAcquired, this`capitalMutexOwner
+      decreases theCustomer, theLoan
+    {
+      logEvent(""BEGINNING APPLICATION COMPLETION PROCESS"");
+      theLoan.printLoanDetails();
+      var loanStatus: string := theLoan.getStatus();
+      if loanStatus == ""rejected"" {
+        var message1: string := ""We are sorry that your application cannot be processed at this time."";
+        var fundsReleased: bool := this.releaseLoanFunds(theLoan);
+        if fundsReleased {
+          var message2: string := ""LOAN FUNDS RELEASED"";
+          this.logEvent(message2);
+          this.informCustomer(theCustomer, message1);
+        }
+      }
+      if loanStatus == ""approved"" {
+        var success: bool := transferLoanToCustomer(theLoan, theCustomer);
+        var accNo: string, sortCode: string := theCustomer.getPaymentDetails();
+        var message: string := ""Your application has been successful. The required loan amount will be transferred to account number: "" + accNo + "" sort code: "" + sortCode;
+        this.informCustomer(theCustomer, message);
+      }
+    }
+
+    method releaseLoanFunds(theLoan: PersonalLoan) returns (success: bool)
+      modifies this`capitalFundValue, this`reservedFunds, this`capitalMutexAcquired, this`capitalMutexOwner, this`reservedMutexAcquired, this`reservedMutexOwner
+      ensures this.capitalFundValue + this.reservedFunds == old(capitalFundValue) + old(reservedFunds)
+      decreases theLoan
+    {
+      var accessCapitalFund: bool := false;
+      var accessReservedFund: bool := false;
+      assume {:axiom} accessCapitalFund;
+      while !accessCapitalFund {
+        accessCapitalFund := this.requestCapitalAccess(theLoan);
+      }
+      assume {:axiom} accessReservedFund;
+      while !accessReservedFund {
+        accessReservedFund := this.requestReservedAccess(theLoan);
+      }
+      var loanAmount: nat := theLoan.getRequiredAmount();
+      var startingCapitalfund: nat := this.capitalFundValue;
+      var startingReserveFund: nat := this.reservedFunds;
+      this.capitalFundValue := this.capitalFundValue + loanAmount;
+      assume {:axiom} this.reservedFunds - loanAmount > 0;
+      this.reservedFunds := this.reservedFunds - loanAmount;
+      var finishingCapitalFund: nat := this.capitalFundValue;
+      var finishingReservedFund: nat := this.reservedFunds;
+      var both: bool := finishingCapitalFund == startingCapitalfund + loanAmount && finishingReservedFund == startingReserveFund - loanAmount;
+      logEvent(""RESERVED LOAN FUNDS RELEASED"");
+      this.printFundValues();
+      this.releaseReservedAccess(theLoan);
+      this.releaseCapitalAccess(theLoan);
+      return both;
+    }
+
+    method transferLoanToCustomer(theLoan: PersonalLoan, theCustomer: Customer) returns (success: bool)
+      modifies this`reservedFunds, this`reservedMutexAcquired, this`reservedMutexOwner
+      ensures this.reservedFunds + theLoan.requiredAmount == old(reservedFunds)
+      decreases theLoan, theCustomer
+    {
+      var access: bool := false;
+      assume {:axiom} access;
+      while !access {
+        access := this.requestReservedAccess(theLoan);
+      }
+      var accNo: string, sortCode: string := theCustomer.getPaymentDetails();
+      var message: string := ""Transfer funds: account number:"" + accNo + "" sort code: "" + sortCode;
+      var loanAmount: nat := theLoan.getRequiredAmount();
+      var startingReserveFund: nat := this.reservedFunds;
+      assume {:axiom} this.reservedFunds - loanAmount > 0;
+      this.reservedFunds := this.reservedFunds - loanAmount;
+      var finishingReservedFund: nat := this.reservedFunds;
+      var transferred: bool := finishingReservedFund == startingReserveFund - loanAmount;
+      logEvent(""LOAN FUNDS TRANSFERRED"");
+      this.printFundValues();
+      this.releaseReservedAccess(theLoan);
+      return transferred;
+    }
+
+    method logEvent(eventMessage: string)
+      decreases eventMessage
+    {
+      var message: string := ""System Log: Event :: "" + eventMessage;
+      print message, ""\n"";
+    }
+
+    method printFundValues()
+    {
+      var cfv: string := ""CAPITAL FUND VALUE :: £"";
+      var rfv: string := ""RESERVED FUND VALUE :: £"";
+      print cfv, this.capitalFundValue, ""\n"", rfv, this.reservedFunds, ""\n"";
+    }
+
+    method getNextLoanReference() returns (ref: nat)
+      modifies this`nextLoanReference
+      ensures ref == old(this.nextLoanReference)
+      ensures this.nextLoanReference == old(this.nextLoanReference) + 1
+    {
+      var oldRef: nat := this.nextLoanReference;
+      this.nextLoanReference := this.nextLoanReference + 1;
+      return oldRef;
+    }
+
+    method getNextCustomerReference() returns (ref: nat)
+      modifies this`nextCustomerReference
+      ensures ref == old(this.nextCustomerReference)
+      ensures this.nextCustomerReference == old(this.nextCustomerReference) + 1
+    {
+      var oldRef: nat := this.nextCustomerReference;
+      this.nextCustomerReference := this.nextCustomerReference + 1;
+      return oldRef;
+    }
+
+    method requestCapitalAccess(loan: PersonalLoan) returns (granted: bool)
+      modifies this`capitalMutexAcquired, this`capitalMutexOwner
+      ensures granted == !old(this.capitalMutexAcquired)
+      ensures !granted == old(this.capitalMutexAcquired)
+      decreases loan
+    {
+      if !this.capitalMutexAcquired {
+        this.capitalMutexAcquired := true;
+        this.capitalMutexOwner := loan;
+        logEvent(""CAPITAL FUND MUTEX ACQUIRED"");
+        return true;
+      } else {
+        return false;
+      }
+    }
+
+    method releaseCapitalAccess(loan: PersonalLoan?)
+      modifies this`capitalMutexAcquired, this`capitalMutexOwner
+      decreases loan
+    {
+      if this.capitalMutexAcquired && this.capitalMutexOwner == loan {
+        this.capitalMutexOwner := null;
+        this.capitalMutexAcquired := false;
+        logEvent(""CAPITAL FUND MUTEX RELEASED"");
+      }
+    }
+
+    method requestReservedAccess(loan: PersonalLoan) returns (granted: bool)
+      modifies this`reservedMutexAcquired, this`reservedMutexOwner
+      ensures granted == !old(this.reservedMutexAcquired)
+      ensures !granted == old(this.reservedMutexAcquired)
+      decreases loan
+    {
+      if !this.reservedMutexAcquired {
+        this.reservedMutexAcquired := true;
+        this.reservedMutexOwner := loan;
+        logEvent(""RESERVED FUND MUTEX ACQUIRED"");
+        return true;
+      } else {
+        return false;
+      }
+    }
+
+    method releaseReservedAccess(loan: PersonalLoan?)
+      modifies this`reservedMutexAcquired, this`reservedMutexOwner
+      decreases loan
+    {
+      if this.reservedMutexAcquired && this.reservedMutexOwner == loan {
+        this.reservedMutexOwner := null;
+        this.reservedMutexAcquired := false;
+        logEvent(""RESERVED FUND MUTEX RELEASED"");
+      }
+    }
+  }
+}
+
+module {:extern ""User""} User {
+
+  export
+    reveals *
+    reveals Customer, Customer.name, Customer.age, Customer.accountNumber, Customer.sortCode, Customer.monthlyIncome, Customer.monthlyOutgoings, Customer.customerReference
+    provides Customer._ctor, Customer.getName, Customer.getAge, Customer.getPaymentDetails, Customer.getMonthlyIncome, Customer.getMonthlyOutgoings, Customer.getCustomerReference, Customer.printCustomerDetails
+
+  class Customer {
+    const name: string
+    const age: nat
+    const accountNumber: string
+    const sortCode: string
+    const monthlyIncome: real
+    const monthlyOutgoings: real
+    const customerReference: nat
+
+    constructor (aName: string, anAge: nat, anAccountNumber: string, aSortCode: string, aMonthlyIncome: real, aMonthlyOutgoing: real, aReference: nat)
+      ensures this.name == aName
+      ensures this.age == anAge
+      ensures this.accountNumber == anAccountNumber
+      ensures this.sortCode == aSortCode
+      ensures this.monthlyIncome == aMonthlyIncome
+      ensures this.monthlyOutgoings == aMonthlyOutgoing
+      ensures this.customerReference == aReference
+      decreases aName, anAge, anAccountNumber, aSortCode, aMonthlyIncome, aMonthlyOutgoing, aReference
+    {
+      this.name := aName;
+      this.age := anAge;
+      this.accountNumber := anAccountNumber;
+      this.sortCode := aSortCode;
+      this.monthlyIncome := aMonthlyIncome;
+      this.monthlyOutgoings := aMonthlyOutgoing;
+      this.customerReference := aReference;
+    }
+
+    method getName() returns (customerName: string)
+      ensures customerName == this.name
+    {
+      return this.name;
+    }
+
+    method getAge() returns (customerAge: nat)
+      ensures customerAge == this.age
+    {
+      return this.age;
+    }
+
+    method getPaymentDetails() returns (accountNumber: string, sortCode: string)
+      ensures accountNumber == this.accountNumber
+      ensures sortCode == this.sortCode
+    {
+      return this.accountNumber, this.sortCode;
+    }
+
+    method getMonthlyIncome() returns (income: real)
+      ensures income == this.monthlyIncome
+    {
+      return this.monthlyIncome;
+    }
+
+    method getMonthlyOutgoings() returns (outgoings: real)
+      ensures outgoings == this.monthlyOutgoings
+    {
+      return this.monthlyOutgoings;
+    }
+
+    method getCustomerReference() returns (reference: nat)
+      ensures reference == this.customerReference
+    {
+      return this.customerReference;
+    }
+
+    method printCustomerDetails()
+    {
+      var ref: string := ""Customer reference number: "";
+      var name: string := ""Customer name: "";
+      var age: string := ""Customer age: "";
+      var acc: string := ""Customer account number: "";
+      var sort: string := ""Customer sort code: "";
+      var income: string := ""Customer monthly income: £"";
+      var outgoings: string := ""Customer monthly expenditure: £"";
+      print ref, this.customerReference, ""\n"", name, this.name, ""\n"", age, this.age, ""\n"", acc, this.accountNumber, ""\n"", sort, this.sortCode, ""\n"", income, this.monthlyIncome, ""\n"", outgoings, this.monthlyOutgoings, ""\n"";
+    }
+  }
+}
+
+module {:extern ""Product""} Product {
+
+  export
+    reveals *
+    reveals PersonalLoan, PersonalLoan.monthLoan24, PersonalLoan.monthLoan36, PersonalLoan.monthLoan48, PersonalLoan.monthLoan60, PersonalLoan.maxAge, PersonalLoan.incomeAffordabilityThreshold, PersonalLoan.goodCreditScoreThreshold, PersonalLoan.highInterestRate, PersonalLoan.lowInterestRate
+    provides PersonalLoan.calculateRepayment
+    reveals PersonalLoan.referenceNumber, PersonalLoan.requiredAmount, PersonalLoan.repaymentPeriod, PersonalLoan.interestRate, PersonalLoan.totalAmountRepayable, PersonalLoan.monthlyRepaymentAmount
+    provides PersonalLoan.statusPending, PersonalLoan.statusRejected, PersonalLoan.statusApproved, PersonalLoan._ctor, PersonalLoan.setStatus, PersonalLoan.setStatusPending, PersonalLoan.setStatusRejected, PersonalLoan.setStatusApproved, PersonalLoan.getStatus, PersonalLoan.verifyAgeCriteria, PersonalLoan.verifyIncomeCriteria, PersonalLoan.verifyCreditScore, PersonalLoan.getLoanReference, PersonalLoan.getRequiredAmount, PersonalLoan.printLoanDetails
+
+  class PersonalLoan {
+    static const monthLoan24: map<nat, real> := map[5000 := 5694.72, 5100 := 5808.72, 5200 := 5922.72, 5300 := 6036.48, 5400 := 6150.48, 5500 := 6264.24, 5600 := 6378.24, 5700 := 6492.0, 5800 := 6606.0, 5900 := 6720.0, 6000 := 6833.76, 6100 := 6947.76, 6200 := 7061.52, 6300 := 7175.52, 6400 := 7289.28, 6500 := 7403.28, 6600 := 7517.28, 6700 := 7631.04, 6800 := 7745.04, 6900 := 7858.8, 7000 := 7972.8, 7100 := 8086.56, 7200 := 8200.56, 7300 := 8314.56, 7400 := 8428.32, 7500 := 7987.92, 7600 := 8094.24, 7700 := 8200.8, 7800 := 8307.36, 7900 := 8413.92, 8000 := 8520.48, 8100 := 8626.8, 8200 := 8733.36, 8300 := 8839.92, 8400 := 8946.48, 8500 := 9052.8, 8600 := 9159.36, 8700 := 9265.92, 8800 := 9372.48, 8900 := 9478.8, 9000 := 9585.36, 9100 := 9691.92, 9200 := 9798.48, 9300 := 9905.04, 9400 := 10011.36, 9500 := 10117.92, 9600 := 10224.48, 9700 := 10331.04, 9800 := 10437.36, 9900 := 10543.92, 10000 := 10650.48]
+    static const monthLoan36: map<nat, real> := map[5000 := 6049.08, 5100 := 6170.04, 5200 := 6291.36, 5300 := 6412.32, 5400 := 6533.28, 5500 := 6654.24, 5600 := 6775.2, 5700 := 6896.16, 5800 := 7017.12, 5900 := 7138.08, 6000 := 7259.04, 6100 := 7380.0, 6200 := 7500.96, 6300 := 7621.92, 6400 := 7742.88, 6500 := 7863.84, 6600 := 7985.16, 6700 := 8106.12, 6800 := 8227.08, 6900 := 8348.04, 7000 := 8469.0, 7100 := 8589.96, 7200 := 8710.92, 7300 := 8831.88, 7400 := 8952.84, 7500 := 8229.24, 7600 := 8339.04, 7700 := 8448.84, 7800 := 8558.28, 7900 := 8668.08, 8000 := 8777.88, 8100 := 8887.68, 8200 := 8997.12, 8300 := 9106.92, 8400 := 9216.72, 8500 := 9326.52, 8600 := 9436.32, 8700 := 9545.76, 8800 := 9655.56, 8900 := 9765.36, 9000 := 9875.16, 9100 := 9984.96, 9200 := 10094.4, 9300 := 10204.2, 9400 := 10314.0, 9500 := 10423.8, 9600 := 10533.24, 9700 := 10643.04, 9800 := 10752.84, 9900 := 10862.64, 10000 := 10972.44]
+    static const monthLoan48: map<nat, real> := map[5000 := 6417.12, 5100 := 6545.28, 5200 := 6673.92, 5300 := 6802.08, 5400 := 6930.24, 5500 := 7058.88, 5600 := 7187.04, 5700 := 7315.68, 5800 := 7443.84, 5900 := 7572.0, 6000 := 7700.64, 6100 := 7828.8, 6200 := 7956.96, 6300 := 8085.6, 6400 := 8213.76, 6500 := 8342.4, 6600 := 8470.56, 6700 := 8598.72, 6800 := 8727.36, 6900 := 8855.52, 7000 := 8983.68, 7100 := 9112.32, 7200 := 9240.48, 7300 := 9369.12, 7400 := 9497.28, 7500 := 8475.36, 7600 := 8588.16, 7700 := 8701.44, 7800 := 8814.24, 7900 := 8927.04, 8000 := 9040.32, 8100 := 9153.12, 8200 := 9266.4, 8300 := 9379.2, 8400 := 9492.48, 8500 := 9605.28, 8600 := 9718.08, 8700 := 9831.36, 8800 := 9944.16, 8900 := 10057.44, 9000 := 10170.24, 9100 := 10283.52, 9200 := 10396.32, 9300 := 10509.12, 9400 := 10622.4, 9500 := 10735.2, 9600 := 10848.48, 9700 := 10961.28, 9800 := 11074.56, 9900 := 11187.36, 10000 := 11300.16]
+    static const monthLoan60: map<nat, real> := map[5000 := 6798.0, 5100 := 6934.2, 5200 := 7069.8, 5300 := 7206.0, 5400 := 7342.2, 5500 := 7477.8, 5600 := 7614.0, 5700 := 7749.6, 5800 := 7885.8, 5900 := 8022.0, 6000 := 8157.6, 6100 := 8293.8, 6200 := 8430.0, 6300 := 8565.6, 6400 := 8701.8, 6500 := 8837.4, 6600 := 8973.6, 6700 := 9109.8, 6800 := 9245.4, 6900 := 9381.6, 7000 := 9517.2, 7100 := 9653.4, 7200 := 9789.6, 7300 := 9925.2, 7400 := 10061.4, 7500 := 8725.8, 7600 := 8842.2, 7700 := 8958.6, 7800 := 9075.0, 7900 := 9191.4, 8000 := 9307.8, 8100 := 9424.2, 8200 := 9540.6, 8300 := 9657.0, 8400 := 9772.8, 8500 := 9889.2, 8600 := 10005.6, 8700 := 10112.0, 8800 := 10238.4, 8900 := 10354.8, 9000 := 10471.2, 9100 := 10587.6, 9200 := 10704.0, 9300 := 10820.4, 9400 := 10936.8, 9500 := 11052.6, 9600 := 11169.0, 9700 := 11285.4, 9800 := 11401.8, 9900 := 11518.2, 10000 := 11634.6]
+    static const maxAge: nat := 67 * 12
+    static const incomeAffordabilityThreshold: real := 0.8
+    static const goodCreditScoreThreshold: nat := 881
+    static const highInterestRate: real := 13.6
+    static const lowInterestRate: real := 6.3
+
+    static method calculateRepayment(anAmount: nat, repaymentPeriod: nat)
+        returns (totalAmountRepayable: real, monthlyRepaymentAmount: real)
+      requires anAmount in PersonalLoan.monthLoan24 || anAmount in PersonalLoan.monthLoan36 || anAmount in PersonalLoan.monthLoan48 || anAmount in PersonalLoan.monthLoan60
+      requires repaymentPeriod == 24 || repaymentPeriod == 36 || repaymentPeriod == 48 || repaymentPeriod == 60
+      ensures totalAmountRepayable == PersonalLoan.monthLoan24[anAmount] || totalAmountRepayable == PersonalLoan.monthLoan36[anAmount] || totalAmountRepayable == PersonalLoan.monthLoan48[anAmount] || totalAmountRepayable == PersonalLoan.monthLoan60[anAmount]
+      ensures monthlyRepaymentAmount == PersonalLoan.monthLoan24[anAmount] / 24 as real || monthlyRepaymentAmount == PersonalLoan.monthLoan36[anAmount] / 36 as real || monthlyRepaymentAmount == PersonalLoan.monthLoan48[anAmount] / 48 as real || monthlyRepaymentAmount == PersonalLoan.monthLoan60[anAmount] / 60 as real
+      decreases anAmount, repaymentPeriod
+    {
+      var totalAmount: real;
+      if {
+        case repaymentPeriod == 24 =>
+          totalAmount := PersonalLoan.monthLoan24[anAmount];
+        case repaymentPeriod == 36 =>
+          totalAmount := PersonalLoan.monthLoan36[anAmount];
+        case repaymentPeriod == 48 =>
+          totalAmount := PersonalLoan.monthLoan48[anAmount];
+        case repaymentPeriod == 60 =>
+          totalAmount := PersonalLoan.monthLoan60[anAmount];
+      }
+      var monthlyAmount: real := totalAmount / repaymentPeriod as real;
+      return totalAmount, monthlyAmount;
+    }
+
+    const referenceNumber: nat
+    const requiredAmount: nat
+    const repaymentPeriod: nat
+    const interestRate: real
+    const totalAmountRepayable: real
+    const monthlyRepaymentAmount: real
+    var statusPending: bool
+    var statusRejected: bool
+    var statusApproved: bool
+
+    constructor (aRequiredAmount: nat, aRepaymentPeriod: nat, anInterestRate: real, aReferenceNumber: nat)
+      requires aRequiredAmount in PersonalLoan.monthLoan24 || aRequiredAmount in PersonalLoan.monthLoan36 || aRequiredAmount in PersonalLoan.monthLoan48 || aRequiredAmount in PersonalLoan.monthLoan60
+      requires aRepaymentPeriod == 24 || aRepaymentPeriod == 36 || aRepaymentPeriod == 48 || aRepaymentPeriod == 60
+      requires anInterestRate == PersonalLoan.lowInterestRate || anInterestRate == PersonalLoan.highInterestRate
+      ensures this.requiredAmount == aRequiredAmount
+      ensures this.repaymentPeriod == aRepaymentPeriod
+      ensures this.interestRate == anInterestRate
+      ensures this.totalAmountRepayable == PersonalLoan.monthLoan24[aRequiredAmount] || this.totalAmountRepayable == PersonalLoan.monthLoan36[aRequiredAmount] || this.totalAmountRepayable == PersonalLoan.monthLoan48[aRequiredAmount] || this.totalAmountRepayable == PersonalLoan.monthLoan60[aRequiredAmount]
+      ensures this.statusPending == true
+      ensures this.statusRejected == this.statusApproved
+      ensures this.statusPending != (this.statusRejected || this.statusApproved)
+      decreases aRequiredAmount, aRepaymentPeriod, anInterestRate, aReferenceNumber
+    {
+      this.referenceNumber := aReferenceNumber;
+      this.requiredAmount := aRequiredAmount;
+      this.repaymentPeriod := aRepaymentPeriod;
+      this.interestRate := anInterestRate;
+      var total, monthly: real := PersonalLoan.calculateRepayment(aRequiredAmount, aRepaymentPeriod);
+      this.totalAmountRepayable := total;
+      this.monthlyRepaymentAmount := monthly;
+      this.statusPending := true;
+      this.statusRejected := false;
+      this.statusApproved := false;
+    }
+
+    method setStatus(status: string)
+      requires status == ""pending"" || status == ""rejected"" || status == ""approved""
+      modifies this`statusPending, this`statusRejected, this`statusApproved
+      decreases status
+    {
+      if {
+        case status == ""pending"" =>
+          setStatusPending();
+        case status == ""rejected"" =>
+          setStatusRejected();
+        case status == ""approved"" =>
+          setStatusApproved();
+      }
+    }
+
+    method setStatusPending()
+      modifies this`statusRejected, this`statusApproved, this`statusPending
+      ensures this.statusPending == true
+      ensures this.statusRejected == false
+      ensures this.statusApproved == false
+      ensures !(this.statusPending == this.statusRejected == this.statusApproved)
+    {
+      this.statusRejected := false;
+      this.statusApproved := false;
+      this.statusPending := true;
+    }
+
+    method setStatusRejected()
+      modifies this`statusPending, this`statusApproved, this`statusRejected
+      ensures this.statusRejected == true
+      ensures this.statusPending == false
+      ensures this.statusApproved == false
+      ensures !(this.statusPending == this.statusRejected == this.statusApproved)
+    {
+      this.statusPending := false;
+      this.statusApproved := false;
+      this.statusRejected := true;
+    }
+
+    method setStatusApproved()
+      modifies this`statusPending, this`statusRejected, this`statusApproved
+      ensures this.statusApproved == true
+      ensures this.statusPending == false
+      ensures this.statusRejected == false
+      ensures !(this.statusPending == this.statusRejected == this.statusApproved)
+    {
+      this.statusPending := false;
+      this.statusRejected := false;
+      this.statusApproved := true;
+    }
+
+    method getStatus() returns (status: string)
+      requires !(this.statusPending == this.statusRejected == this.statusApproved)
+      ensures status == ""pending"" || status == ""rejected"" || status == ""approved""
+    {
+      if {
+        case this.statusPending == true =>
+          return ""pending"";
+        case this.statusRejected == true =>
+          return ""rejected"";
+        case this.statusApproved == true =>
+          return ""approved"";
+      }
+    }
+
+    method verifyAgeCriteria(customerAge: nat) returns (isVerified: bool)
+      ensures isVerified == (customerAge * 12 + this.repaymentPeriod <= PersonalLoan.maxAge)
+      ensures !isVerified == (customerAge * 12 + this.repaymentPeriod > PersonalLoan.maxAge)
+      decreases customerAge
+    {
+      var ageWhenLoanComplete: nat := customerAge * 12 + this.repaymentPeriod;
+      return ageWhenLoanComplete <= PersonalLoan.maxAge;
+    }
+
+    method verifyIncomeCriteria(customerMonthlyIncome: real, customerMonthlyOutgoings: real) returns (isVerified: bool)
+      ensures isVerified == (customerMonthlyIncome * 0.8 >= customerMonthlyOutgoings + this.monthlyRepaymentAmount)
+      ensures !isVerified == (customerMonthlyIncome * 0.8 < customerMonthlyOutgoings + this.monthlyRepaymentAmount)
+      decreases customerMonthlyIncome, customerMonthlyOutgoings
+    {
+      var totalOutgoings: real := customerMonthlyOutgoings + this.monthlyRepaymentAmount;
+      var adjustedIncommings: real := customerMonthlyIncome * PersonalLoan.incomeAffordabilityThreshold;
+      return adjustedIncommings >= totalOutgoings;
+    }
+
+    method verifyCreditScore(customerCreditScore: nat) returns (isVerified: bool)
+      ensures isVerified == (customerCreditScore >= PersonalLoan.goodCreditScoreThreshold)
+      ensures !isVerified == (customerCreditScore < PersonalLoan.goodCreditScoreThreshold)
+      decreases customerCreditScore
+    {
+      return customerCreditScore >= PersonalLoan.goodCreditScoreThreshold;
+    }
+
+    method getLoanReference() returns (reference: nat)
+      ensures reference == this.referenceNumber
+    {
+      return this.referenceNumber;
+    }
+
+    method getRequiredAmount() returns (amount: nat)
+      ensures amount == this.requiredAmount
+    {
+      return this.requiredAmount;
+    }
+
+    method printLoanDetails()
+      requires !(this.statusPending == this.statusRejected == this.statusApproved)
+    {
+      var ref: string := ""Loan reference number: "";
+      var amount: string := ""Required amount: £"";
+      var period: string := ""Required repayment period: "";
+      var rate: string := ""Interest rate "";
+      var total: string := ""Total repayable amount: £"";
+      var monthly: string := ""Monthly repayable amount: £"";
+      var status: string := ""Current loan status: "";
+      var currentStatus: string := this.getStatus();
+      print ref, this.referenceNumber, ""\n"", amount, this.requiredAmount, "".00"", ""\n"", period, this.repaymentPeriod, "" months"", ""\n"", rate, this.interestRate, ""%"", ""\n"", total, this.totalAmountRepayable, ""\n"", monthly, this.monthlyRepaymentAmount, ""\n"", status, currentStatus, ""\n"";
+    }
+  }
+}
+
+module {:extern ""Support""} Support {
+
+  export
+    reveals *
+    reveals CreditReferenceAgency, CreditReferenceAgency.creditScoreMin, CreditReferenceAgency.creditScoreMax, CreditReferenceAgency.creditScoreGood
+    provides CreditReferenceAgency.creditScores, CreditReferenceAgency._ctor, CreditReferenceAgency.addPerson, CreditReferenceAgency.getCreditScore
+
+  class CreditReferenceAgency {
+    static const creditScoreMin: nat := 0
+    static const creditScoreMax: nat := 999
+    static const creditScoreGood: nat := 881
+    var creditScores: map<string, nat>
+
+    constructor ()
+    {
+    }
+
+    method addPerson(name: string, creditScoreSetup: nat) returns (added: bool)
+      requires CreditReferenceAgency.creditScoreMin <= creditScoreSetup <= CreditReferenceAgency.creditScoreMax
+      modifies this`creditScores
+      ensures name in creditScores
+      ensures CreditReferenceAgency.creditScoreMin <= creditScores[name] <= CreditReferenceAgency.creditScoreMax
+      ensures added == (name in creditScores)
+      decreases name, creditScoreSetup
+    {
+      this.creditScores := map[name := creditScoreSetup];
+      if name in creditScores {
+        return true;
+      } else {
+        return false;
+      }
+    }
+
+    method getCreditScore(name: string) returns (creditScore: nat)
+      requires name in creditScores
+      ensures creditScore == this.creditScores[name]
+      decreases name
+    {
+      return this.creditScores[name];
+    }
+  }
+}
+")]
+*///************************  END OF DAFNY SOURCE CODE  ***************************************************************
 
 namespace Dafny {
   internal class ArrayHelpers {
@@ -56,9 +855,17 @@ namespace Support {
     public void __ctor()
     {
     }
-    public void addPerson(Dafny.ISequence<Dafny.Rune> name, BigInteger creditScoreSetup)
+    public async Task<bool> addPerson(Dafny.ISequence<Dafny.Rune> name, BigInteger creditScoreSetup)
     {
+      bool added = false;
       (this).creditScores = Dafny.Map<Dafny.ISequence<Dafny.Rune>, BigInteger>.FromElements(new Dafny.Pair<Dafny.ISequence<Dafny.Rune>, BigInteger>(name, creditScoreSetup));
+      if ((this.creditScores).Contains(name)) {
+        added = true;
+        return added;
+      } else {
+        added = false;
+        return added;
+      }
     }
     public BigInteger getCreditScore(Dafny.ISequence<Dafny.Rune> name)
     {
@@ -702,7 +1509,7 @@ namespace BankSystem {
         isSuccessful = _38_verified;
         return isSuccessful;
       } else {
-        (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("AGE CRITERIA VERIFICATION PASSED"));
+        (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("INCOME CRITERIA VERIFICATION PASSED"));
       }
       BigInteger _44_customerCreditScore;
       BigInteger _out22;
@@ -957,8 +1764,8 @@ namespace BankSystem {
       if (!(this.capitalMutexAcquired)) {
         (this).capitalMutexAcquired = true;
         (this).capitalMutexOwner = loan;
-        granted = true;
         (this).logEvent(Dafny.Sequence<Dafny.Rune>.UnicodeFromString("CAPITAL FUND MUTEX ACQUIRED"));
+        granted = true;
         return granted;
       } else {
         granted = false;

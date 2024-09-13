@@ -35,10 +35,26 @@ class UserInterface
     return (bank, cra);
   }
 
-  public static void BeginLoanApplicationSubmissionInterface(Bank bank, CreditReferenceAgency creditReferenceAgency)
+  public static async void BeginLoanApplicationSubmissionInterface(Bank bank, CreditReferenceAgency creditReferenceAgency)
   {
     while(true)
     {
+
+      var input = await UserInterface.GetUserInput();
+      // add customer to the Credit Reference Agency
+      var added = await creditReferenceAgency.addPerson(input.name, input.creditScore);
+      // if customer successfully added start a new application
+      if (added) {
+      bank.newApplication(input.name, input.age, input.accNo, input.sortCode, input.monthlyIncome, input.monthlyOutgoings, input.requiredAmount, input.repaymentPeriod);
+      } else {
+        Console.WriteLine($"{Environment.NewLine}Setup Error: Program terminating");
+        break;
+      }
+    }
+  }
+
+  public static async Task<UserInput> GetUserInput()
+  {
       bool exit = false;
       string name = "";
       int age = 0;
@@ -53,7 +69,7 @@ class UserInterface
       Console.WriteLine($"{Environment.NewLine}Enter 'y' and press <Enter> to begin a loan application or any other key to exit:");
       string? input = Console.ReadLine();
       if (string.IsNullOrEmpty(input) || !(input.Equals("y") || input.Equals("Y"))) {exit = true;} 
-      if (exit) {break;}
+      if (exit) {System.Environment.Exit(1);}
       // get customer personal details
       Console.WriteLine($"{Environment.NewLine}Please enter customer personal details");
       // get customer name
@@ -64,7 +80,7 @@ class UserInterface
       } else {
         name = input;
       }
-      if (exit) {break;}
+      if (exit) {System.Environment.Exit(1);}
       // get customer age
       Console.WriteLine($"{Environment.NewLine}Enter an age between 18 and 65 (inclusive) or blank to exit:");
       input = Console.ReadLine();
@@ -76,7 +92,7 @@ class UserInterface
           exit = true;
         }
       }
-      if (exit) {break;}
+      if (exit) {System.Environment.Exit(1);}
       // get customer account number
       Console.WriteLine($"{Environment.NewLine}Enter customer account number or blank to exit:");
       input = Console.ReadLine();
@@ -85,7 +101,7 @@ class UserInterface
       } else {
         accNo = input;
       }
-      if (exit) {break;}
+      if (exit) {System.Environment.Exit(1);}
       // get customer sort code
       Console.WriteLine($"{Environment.NewLine}Enter customer sort code or blank to exit:");
       input = Console.ReadLine();
@@ -94,7 +110,7 @@ class UserInterface
       } else {
         sortCode = input;
       }
-      if (exit) {break;}
+      if (exit) {System.Environment.Exit(1);}
       // get customer monthly income
       Console.WriteLine($"{Environment.NewLine}Enter customer monthly income or blank to exit:");
       input = Console.ReadLine();
@@ -103,7 +119,7 @@ class UserInterface
       } else {
         monthlyIncome = float.Parse(input);
       }
-      if (exit) {break;}
+      if (exit) {System.Environment.Exit(1);}
       // get customer monthly outgoings
       Console.WriteLine($"{Environment.NewLine}Enter customer monthly outgoings or blank to exit:");
       input = Console.ReadLine();
@@ -112,7 +128,7 @@ class UserInterface
       } else {
         monthlyOutgoings = float.Parse(input);
       }
-      if (exit) {break;}
+      if (exit) {System.Environment.Exit(1);}
       // get customer credit score setup
       Console.WriteLine($"{Environment.NewLine}Enter customer credit score setup, 0-880 for 'fail' or 881-999 for 'pass' or blank to exit:");
       input = Console.ReadLine();
@@ -124,7 +140,7 @@ class UserInterface
           exit = true;
         }
       }
-      if (exit) {break;}
+      if (exit) {System.Environment.Exit(1);}
       // get loan requirement details
       Console.WriteLine($"{Environment.NewLine}Please enter customer loan requirements");
       // get required amount
@@ -138,7 +154,7 @@ class UserInterface
           exit = true;
         }
       }
-      if (exit) {break;}
+      if (exit) {System.Environment.Exit(1);}
       // get repayment period
       Console.WriteLine($"{Environment.NewLine}Enter repayment period, 24, 36, 48 or 60 months or blank to exit:");
       input = Console.ReadLine();
@@ -150,7 +166,7 @@ class UserInterface
           exit = true;
         }
       }
-      if (exit) {break;}
+      if (exit) {System.Environment.Exit(1);}
       
       // convert c# types to equivalent Dafny types
       // required for string -> ISequence<Rune>
@@ -161,10 +177,33 @@ class UserInterface
       var dafnySortCode = Dafny.Sequence<Dafny.Rune>.UnicodeFromString(sortCode);
       var dafnyMonthlyIncome = new Dafny.BigRational(monthlyIncome);
       var dafnyMonthlyOutgoings = new Dafny.BigRational(monthlyOutgoings);
-      
-      // add customer to the Credit Reference Agency
-      creditReferenceAgency.addPerson(dafnyName, creditScore);
-      bank.newApplication(dafnyName, age, dafnyAccNo, dafnySortCode, dafnyMonthlyIncome, dafnyMonthlyOutgoings, requiredAmount, repaymentPeriod);
-    }
+
+      UserInput finalInput;
+      finalInput.name = dafnyName;
+      finalInput.age = age;
+      finalInput.accNo = dafnyAccNo;
+      finalInput.sortCode = dafnySortCode;
+      finalInput.monthlyIncome = dafnyMonthlyIncome;
+      finalInput.monthlyOutgoings = dafnyMonthlyOutgoings;
+      finalInput.creditScore = creditScore;
+      finalInput.requiredAmount = requiredAmount;
+      finalInput.repaymentPeriod = repaymentPeriod;
+
+      return finalInput;
   }
+
+  public struct UserInput
+  {
+      public Dafny.ISequence<Dafny.Rune> name;
+      public int age;
+      public Dafny.ISequence<Dafny.Rune> accNo;
+      public Dafny.ISequence<Dafny.Rune> sortCode;
+      public Dafny.BigRational monthlyIncome;
+      public Dafny.BigRational monthlyOutgoings;
+      public int creditScore;
+      public int requiredAmount;
+      public int repaymentPeriod;
+  }
+
+
 }

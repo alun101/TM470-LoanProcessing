@@ -26,13 +26,19 @@ module {:extern "Support"} Support
     
     // instance methods
 
-    method addPerson(name: string, creditScoreSetup: nat) returns ()
+    method addPerson(name: string, creditScoreSetup: nat) returns (added: bool)
     requires CreditReferenceAgency.creditScoreMin <= creditScoreSetup <= CreditReferenceAgency.creditScoreMax
     modifies this`creditScores
     ensures name in creditScores
     ensures CreditReferenceAgency.creditScoreMin <= creditScores[name] <= CreditReferenceAgency.creditScoreMax
+    ensures added == (name in creditScores)
     {
       this.creditScores := map[name := creditScoreSetup];
+      if (name in creditScores) { 
+        return true;
+      } else {
+        return false;
+      }
     }
 
     method getCreditScore(name: string) returns (creditScore: nat)

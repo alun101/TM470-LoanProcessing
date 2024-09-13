@@ -214,7 +214,7 @@ module {:extern "BankSystem"} BankSystem
         this.informCustomer(aCustomer, message);
         return verified;
       } else {
-        logEvent("AGE CRITERIA VERIFICATION PASSED");
+        logEvent("INCOME CRITERIA VERIFICATION PASSED");
       }
       var customerCreditScore: nat := this.obtainCustomerCreditScore(this.referenceAgency, aCustomer);
       verified := aLoan.verifyCreditScore(customerCreditScore);
